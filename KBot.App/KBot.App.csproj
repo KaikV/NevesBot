@@ -9,6 +9,7 @@
 	<ImplicitUsings>enable</ImplicitUsings>
 	<RootNamespace>KBot.App</RootNamespace>
     <ApplicationIcon>assets\logo.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="assets\logo.png" />

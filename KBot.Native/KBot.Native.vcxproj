@@ -20,6 +20,7 @@
     <OutDir>$(SolutionDir)x64\$(Configuration)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
     <Platform>x64</Platform>
+    <ApplicationManifestFile>app.manifest</ApplicationManifestFile>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ItemGroup>

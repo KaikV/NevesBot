@@ -11,12 +11,18 @@
 class ClientReader
 {
 public:
-	// Confirmed reference offsets for PokeAlliance_gl.exe:
+	// Confirmed reference offsets, per render build of PokeAlliance.
+	//
+	// GL build (_gl.exe): pointer chain.
 	//   pointer = *(base + 0x0027D168)
-	//   X = *(int32*)(pointer + 0x0)
-	//   Y = *(int32*)(pointer + 0x4)
-	//   Z = *(int32*)(pointer + 0x8)
-	static constexpr ULONG_PTR PointerOffset = 0x0027D168;
+	//   X/Y/Z   = *(int32*)(pointer + 0x0/0x4/0x8)
+	static constexpr ULONG_PTR GlPointerOffset = 0x0027D168;
+	//
+	// DX build (_dx.exe): position lives directly in the main module.
+	//   X = *(int32*)(base + 0x37454E0)
+	//   Y = *(int32*)(base + 0x37454E4)
+	//   Z = *(int32*)(base + 0x37454E8)
+	static constexpr ULONG_PTR DxPositionOffset = 0x37454E0;
 	static constexpr DWORD XOffset = 0x0;
 	static constexpr DWORD YOffset = 0x4;
 	static constexpr DWORD ZOffset = 0x8;
@@ -59,8 +65,25 @@ public:
 			SetMessage("Base do modulo principal nao encontrada nesta versao do cliente.");
 			return;
 		}
+		int x = 0, y = 0, z = 0;
+		if (IsDx())
+		{
+			// DX: position is stored directly in the main module at base + DxPositionOffset.
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + DxPositionOffset), &x, sizeof(x)) ||
+				!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + DxPositionOffset + YOffset), &y, sizeof(y)) ||
+				!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + DxPositionOffset + ZOffset), &z, sizeof(z)))
+			{
+				SetMessage("Falha ao ler X/Y/Z direto em base + 0x37454E0; offset DX possivelmente mudou.");
+				return;
+			}
+			m_x = x; m_y = y; m_z = z;
+			m_valid = true;
+			SetMessage("Posicao lida com sucesso (build DX).");
+			return;
+		}
+		// GL: pointer chain.
 		SIZE_T pointer = 0;
-		if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + PointerOffset), &pointer, sizeof(pointer)))
+		if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + GlPointerOffset), &pointer, sizeof(pointer)))
 		{
 			SetMessage("Falha ao ler o ponteiro em base + 0x0027D168; offset possivelmente mudou.");
 			return;
@@ -70,7 +93,6 @@ public:
 			SetMessage("Ponteiro nulo lido; personagem ainda nao carregado ou offset deslocado.");
 			return;
 		}
-		int x = 0, y = 0, z = 0;
 		if (!ReadMemory(reinterpret_cast<LPCVOID>(pointer + XOffset), &x, sizeof(x)) ||
 			!ReadMemory(reinterpret_cast<LPCVOID>(pointer + YOffset), &y, sizeof(y)) ||
 			!ReadMemory(reinterpret_cast<LPCVOID>(pointer + ZOffset), &z, sizeof(z)))
@@ -109,6 +131,11 @@ private:
 	std::string m_message;
 
 	void SetMessage(std::string value) noexcept { m_message = std::move(value); }
+
+	bool IsDx() const noexcept
+	{
+		return m_processName.find("dx") != std::string::npos;
+	}
 
 	bool ReadMemory(LPCVOID address, void* destination, SIZE_T size) const noexcept
 	{

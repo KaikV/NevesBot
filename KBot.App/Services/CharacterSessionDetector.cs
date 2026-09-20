@@ -38,23 +38,3 @@ public sealed class CharacterSessionDetector : ICharacterSessionDetector
 
     public void Reset() => _aggregator.Reset();
 }
-
-public sealed record ClientStateEvidence(CharacterPresence State, bool Reliable, double Confidence);
-
-public sealed class ClientStateDetector
-{
-    public ClientStateEvidence Detect(NativeStatus? status, int expectedPid)
-    {
-        if (status?.Pid != expectedPid || status.ReaderStatus != "READY")
-            return new(CharacterPresence.Unknown, false, 0);
-        return status.CharacterState?.ToUpperInvariant() switch
-        {
-            "INGAME" => new(CharacterPresence.InGame, true, 0.99),
-            "LOGINSCREEN" => new(CharacterPresence.LoginScreen, true, 0.99),
-            "CHARACTERSELECTION" => new(CharacterPresence.CharacterSelection, true, 0.99),
-            "LOADING" => new(CharacterPresence.Loading, true, 0.99),
-            "DISCONNECTED" => new(CharacterPresence.Disconnected, true, 0.99),
-            _ => new(CharacterPresence.Unknown, false, 0)
-        };
-    }
-}

@@ -12,6 +12,20 @@ public sealed class BotProfile
     public int ReviveOutOfBattleHp { get; set; }
     public string ReviveItemHotkey { get; set; } = "F9";
     public string FoodHotkey { get; set; } = "F10";
+
+    // Healing & revive (aba Home -> "Healing and revive")
+    public bool AutoPotion { get; set; }
+    public bool AutoMedicine { get; set; } = true;   // "Curar status (medicine)"
+    public bool HealPlayer { get; set; } = true;     // "Curar o jogador"
+    public int CureAtPercent { get; set; } = 70;     // threshold to cast heal/medicine
+    public string MedicineHotkey { get; set; } = "F11";
+    public string HealHotkey { get; set; } = "F12";
+
+    // Targeting (aba Home -> "How the bot attacks" + aba Target)
+    public bool AreaCombo { get; set; } = true;      // "Combo em area (varios)"
+    public bool AttackOneByOne { get; set; }         // "Attack the target (1 by 1)"
+    public bool AutoSummon { get; set; } = true;     // "Soltar poke sozinho"
+    public int ActiveSlot { get; set; }              // poke a mandar pra campo (0 = atual)
     public bool AlertsEnabled { get; set; }
     public bool HotkeysEnabled { get; set; }
     public string ManualReviveHotkey { get; set; } = string.Empty;

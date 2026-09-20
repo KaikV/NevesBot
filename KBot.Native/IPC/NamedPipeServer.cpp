@@ -193,6 +193,44 @@ void NamedPipeServer::HandleClient()
 		}
 		response = sent ? "KEY_SENT\n" : "KEY_NOT_SENT\n";
 	}
+	else if (request.rfind("DUMP_START ", 0) == 0)
+	{
+		// DUMP_START <offsetFromAnchorDec> <byteCountDec>
+		std::istringstream input(request.substr(11));
+		long long offset = 0;
+		unsigned int bytes = 0x1000;
+		input >> offset >> bytes;
+
+		m_reader.Poll();
+		unsigned long long anchor = 0;
+		std::string msg;
+		const bool ok = m_reader.TryStartMemoryDump(offset, bytes, anchor, msg);
+		std::ostringstream ss;
+		ss << "{\"ok\":" << (ok ? "true" : "false")
+		   << ",\"anchor\":\"0x" << std::hex << std::uppercase << anchor << std::dec << "\""
+		   << ",\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request.rfind("DUMP_CHUNK ", 0) == 0)
+	{
+		std::istringstream input(request.substr(11));
+		unsigned int chunk = 4096;
+		input >> chunk;
+
+		std::string hex;
+		unsigned int remaining = 0;
+		const bool got = m_reader.TryGetNextDumpChunk(hex, chunk, remaining);
+		std::ostringstream ss;
+		ss << "{\"got\":" << (got ? "true" : "false")
+		   << ",\"remaining\":" << remaining
+		   << ",\"hex\":\"" << EscapeJson(hex) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request == "DUMP_RESET")
+	{
+		m_reader.ResetMemoryDump();
+		response = "RESET\n";
+	}
 	else
 	{
 		response = "UNKNOWN\n";

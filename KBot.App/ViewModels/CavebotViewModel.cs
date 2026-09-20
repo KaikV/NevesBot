@@ -41,18 +41,18 @@ public sealed class CavebotViewModel : ObservableObject
     public bool CanStartRoute => _navigator is { IsRunning: false } && HasWaypoints;
     public bool RouteRunning => _navigator.IsRunning;
 
-    public ICommand ImportCommand { get; } = null!;
-    public ICommand SaveCommand { get; } = null!;
-    public ICommand AddCommand { get; } = null!;
-    public ICommand RemoveCommand { get; } = null!;
-    public ICommand MoveUpCommand { get; } = null!;
-    public ICommand MoveDownCommand { get; } = null!;
-    public ICommand StepUpCommand { get; } = null!;
-    public ICommand StepDownCommand { get; } = null!;
-    public ICommand StepLeftCommand { get; } = null!;
-    public ICommand StepRightCommand { get; } = null!;
-    public ICommand StartRouteCommand { get; } = null!;
-    public ICommand StopRouteCommand { get; } = null!;
+    public ICommand ImportCommand { get; private set; } = null!;
+    public ICommand SaveCommand { get; private set; } = null!;
+    public ICommand AddCommand { get; private set; } = null!;
+    public ICommand RemoveCommand { get; private set; } = null!;
+    public ICommand MoveUpCommand { get; private set; } = null!;
+    public ICommand MoveDownCommand { get; private set; } = null!;
+    public ICommand StepUpCommand { get; private set; } = null!;
+    public ICommand StepDownCommand { get; private set; } = null!;
+    public ICommand StepLeftCommand { get; private set; } = null!;
+    public ICommand StepRightCommand { get; private set; } = null!;
+    public ICommand StartRouteCommand { get; private set; } = null!;
+    public ICommand StopRouteCommand { get; private set; } = null!;
 
     public CavebotViewModel()
     {

@@ -72,6 +72,12 @@ public sealed class DashboardViewModel : ObservableObject
     public string PositionText => HasPosition && Status is { } status
         ? $"{status.PosX}, {status.PosY}, {status.PosZ}" : "—";
 
+    // Live bot brain feed (drives the "AUTOMAÇÃO ATIVA" card).
+    public string BotActionLog => _lifecycle.BotLog;
+    public string BotSignalSummary => _lifecycle.BotSignals;
+    public string BotPendingCommand => _lifecycle.BotPending;
+    public bool BrainActive => _lifecycle.Bot is not null;
+
     private void OnLifecycleChanged(KBotLifecycle _)
     {
         if (_disposed) return;
@@ -91,7 +97,8 @@ public sealed class DashboardViewModel : ObservableObject
             nameof(ClientConnected), nameof(ProcessName), nameof(ProcessId),
             nameof(LastUpdate), nameof(IsMonitoring), nameof(CoreStatusText),
             nameof(ClientStatusText), nameof(MonitorStatusText),             nameof(CanStartCore),
-            nameof(ReaderStatus), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText)
+            nameof(ReaderStatus), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText),
+            nameof(BotActionLog), nameof(BotSignalSummary), nameof(BotPendingCommand), nameof(BrainActive)
         }) OnPropertyChanged(property);
         ((RelayCommand)OpenSessionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CaptureSessionCommand).RaiseCanExecuteChanged();

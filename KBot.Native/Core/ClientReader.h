@@ -3,6 +3,9 @@
 #include <string>
 #include <string.h>
 #include <iostream>
+#include <vector>
+#include <sstream>
+#include <iomanip>
 #include <windows.h>
 #include <TlHelp32.h>
 
@@ -35,6 +38,7 @@ public:
 		m_baseAddress = 0;
 		m_valid = false;
 		m_x = m_y = m_z = 0;
+		ResetMemoryDump();
 		SetMessage("Leitura aguardando o primeiro ciclo.");
 		std::cout << "[ClientReader] Initializing pid=" << pid << '\n';
 		std::cout << "[ClientReader] Read handle " << (readHandle != INVALID_HANDLE_VALUE ? "opened" : "unavailable") << '\n';
@@ -121,6 +125,91 @@ public:
 	}
 	unsigned long long GetBaseAddress() const noexcept { return m_baseAddress; }
 
+	// Offset-hunting support: dumps raw bytes around the same anchor the
+	// confirmed position read uses. DX: base+0x37454E0 directly. GL: the
+	// pointed-to character struct (where X/Y/Z live). Struct members of this
+	// engine typically sit next to each other, so HP/battle state often shows
+	// up within +/- a few hundred bytes of the position fields.
+	bool TryStartMemoryDump(long long offsetFromBase, unsigned int byteCount,
+	                        unsigned long long& anchorAddress, std::string& message) noexcept
+	{
+		m_dumpAddress = 0;
+		m_dumpRemaining = 0;
+		if (m_pid == 0 || m_readHandle == INVALID_HANDLE_VALUE)
+		{
+			message = "Sem handle de leitura.";
+			return false;
+		}
+		if (!ResolveBase())
+		{
+			message = "Base do modulo nao encontrada.";
+			return false;
+		}
+		unsigned long long anchor;
+		if (IsDx())
+		{
+			anchor = m_baseAddress + static_cast<unsigned long long>(DxPositionOffset);
+		}
+		else
+		{
+			SIZE_T pointer = 0;
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + GlPointerOffset), &pointer, sizeof(pointer)))
+			{
+				message = "Falha ao ler ponteiro do personagem.";
+				return false;
+			}
+			if (pointer == 0)
+			{
+				message = "Ponteiro do personagem nulo (nao carregado ou offset mudou).";
+				return false;
+			}
+			anchor = reinterpret_cast<unsigned long long>(pointer);
+		}
+		const auto low = static_cast<long long>(0x2000);
+		long long start = anchor + offsetFromBase;
+		if (start < low) start = low;
+		m_dumpAddress = static_cast<unsigned long long>(start);
+		m_dumpRemaining = (byteCount > 0x10000) ? 0x10000 : byteCount;
+		anchorAddress = anchor;
+		message = "OK";
+		return true;
+	}
+
+	bool TryGetNextDumpChunk(std::string& hexOut, unsigned int chunkBytes, unsigned int& remaining) noexcept
+	{
+		if (m_dumpRemaining == 0)
+		{
+			remaining = 0;
+			return false;
+		}
+		auto count = static_cast<SIZE_T>(m_dumpRemaining < chunkBytes ? m_dumpRemaining : chunkBytes);
+		std::vector<char> buffer(count, 0);
+		size_t got = 0;
+		if (ReadMemory(reinterpret_cast<LPCVOID>(m_dumpAddress), buffer.data(), count))
+		{
+			got = static_cast<size_t>(count);
+		}
+		std::ostringstream ss;
+		for (size_t i = 0; i < got; ++i)
+		{
+			ss << std::hex << std::setw(2) << std::setfill('0')
+			   << static_cast<int>(static_cast<unsigned char>(buffer[i]));
+			if ((i + 1) % 16 == 0 && (i + 1) < got) ss << "\n";
+			else if ((i + 1) < got) ss << " ";
+		}
+		hexOut = ss.str();
+		m_dumpAddress += got;
+		m_dumpRemaining -= static_cast<unsigned int>(got);
+		remaining = m_dumpRemaining;
+		return true;
+	}
+
+	void ResetMemoryDump() noexcept
+	{
+		m_dumpAddress = 0;
+		m_dumpRemaining = 0;
+	}
+
 private:
 	unsigned int m_pid = 0;
 	HANDLE m_readHandle = INVALID_HANDLE_VALUE;
@@ -129,6 +218,8 @@ private:
 	bool m_valid = false;
 	int m_x = 0, m_y = 0, m_z = 0;
 	std::string m_message;
+	unsigned long long m_dumpAddress = 0;
+	unsigned int m_dumpRemaining = 0;
 
 	void SetMessage(std::string value) noexcept { m_message = std::move(value); }
 

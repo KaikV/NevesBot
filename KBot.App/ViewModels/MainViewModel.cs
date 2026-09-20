@@ -18,7 +18,7 @@ namespace KBot.App.ViewModels
             DashboardView = new DashboardView(lifecycle);
             CavebotView = new CavebotView();
             _cavebotViewModel = CavebotView.DataContext as CavebotViewModel ?? new CavebotViewModel();
-            if (CavebotView.DataContext is not _cavebotViewModel) CavebotView.DataContext = _cavebotViewModel;
+            if (!ReferenceEquals(CavebotView.DataContext, _cavebotViewModel)) CavebotView.DataContext = _cavebotViewModel;
             var profile = new SettingsViewModel();
             SettingsView = new SettingsView(profile, "Settings");
             _moduleViews = new Dictionary<string, SettingsView>

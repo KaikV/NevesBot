@@ -1,3 +1,4 @@
+using KBot.App.BotBrain;
 using KBot.App.Models;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -33,6 +34,11 @@ public sealed class KBotLifecycle : IDisposable
     public NativeStatus? LastNativeStatus { get; private set; }
     public string HandoffStatus { get; private set; } = "Aguardando launcher/cliente.";
     public bool CanShowMainWindow => State == KBotLifecycleState.Ready && CharacterSession?.IsInGame == true;
+    public KBot.App.BotBrain.BotBrain? Bot { get; private set; } = null;
+    public string BotLog => Bot?.Log ?? "Brain aguardando personagem.";
+    public string BotSignals => Bot?.SignalSummary ?? "sem leitura ainda.";
+    public string BotPending => Bot?.PendingCommand ?? "—";
+    private BotProfile _profile = new();
     public event Action<KBotLifecycle>? Changed;
 
     public string StartCore() => _native.StartCore();
@@ -153,10 +159,12 @@ public sealed class KBotLifecycle : IDisposable
                 if (detection.DetectionStatus == CharacterDetectionStatus.CaptureUnavailable &&
                     presence != CharacterPresence.InGame)
                     message = "Cliente conectado. Captura indisponível; aguardando janela...";
-                var stateChanged = state != State || message != Message;
-                SetState(state, message);
-                if (!stateChanged) Changed?.Invoke(this);
-                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            var stateChanged = state != State || message != Message;
+            SetState(state, message);
+            if (!stateChanged) Changed?.Invoke(this);
+
+            TickBrain(session);
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -174,6 +182,24 @@ public sealed class KBotLifecycle : IDisposable
                 GameSession = null;
             }
         }
+    }
+
+    private void TickBrain(GameSession session)
+    {
+        if (State != KBotLifecycleState.Ready)
+        {
+            Bot?.Dispose();
+            Bot = null;
+            return;
+        }
+
+        if (Bot is null)
+        {
+            _profile = BotProfileService.Load();
+            Bot = BotBrainFactory.Build(_native, session.WindowHandle, _profile,
+                () => GameStateProvider.From(LastNativeStatus, CharacterSession?.State ?? CharacterPresence.Unknown, Environment.TickCount64));
+        }
+        Bot.Tick();
     }
 
     private void UpdateLauncherHandoff(GameSession session)

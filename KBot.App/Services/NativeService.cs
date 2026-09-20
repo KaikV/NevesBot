@@ -207,6 +207,18 @@ namespace KBot.App.Services
         public Task<string?> DetachGameAsync(CancellationToken cancellationToken) =>
             SendCommandAsync("DETACH_PID", cancellationToken);
 
+        // Offset-hunting helpers. Start a range around the confirmed position
+        // anchor, then pull it in chunks (the pipe frame is 4KB). The response
+        // lines are raw JSON; callers parse the hex/anchor fields.
+        public Task<string?> StartMemoryDumpAsync(long offsetFromAnchor, int byteCount, CancellationToken cancellationToken = default) =>
+            SendCommandAsync($"DUMP_START {offsetFromAnchor} {byteCount}", cancellationToken);
+
+        public Task<string?> GetMemoryDumpChunkAsync(int chunkBytes = 4096, CancellationToken cancellationToken = default) =>
+            SendCommandAsync($"DUMP_CHUNK {chunkBytes}", cancellationToken);
+
+        public Task<string?> ResetMemoryDumpAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("DUMP_RESET", cancellationToken);
+
         private static async Task<string?> SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             try

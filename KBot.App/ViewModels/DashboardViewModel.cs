@@ -61,10 +61,15 @@ public sealed class DashboardViewModel : ObservableObject
         "NOT_CONFIGURED" => "Não configurado",
         _ => Status?.ReaderStatus ?? "Desconhecido"
     };
+    public string ReaderDetail => ClientConnected
+        ? ReaderStatus == "Pronto" && Status is { HasPosition: true } s
+            ? $"Reader: Pronto (posição {s.PosX}, {s.PosY}, {s.PosZ})"
+            : $"Reader: {ReaderStatus} — {Status?.ReaderMessage ?? "desconhecido"}"
+        : "Reader: aguardando conexão.";
     public string StatusMessage => ClientConnected
         ? ReaderStatus == "Pronto"
             ? $"Cliente {ProcessName} conectado e pronto para leitura."
-            : $"Cliente {ProcessName} conectado. Leitura interna ainda não configurada."
+            : $"Cliente {ProcessName} conectado. Leitura interna ainda não configurada.\nMotivo do core: {Status?.ReaderMessage ?? "desconhecido"}"
         : NativeOnline ? "Núcleo online. Aguardando conexão com o cliente."
         : "Núcleo offline. Use “Iniciar núcleo” para tentar conectar.";
 
@@ -97,7 +102,7 @@ public sealed class DashboardViewModel : ObservableObject
             nameof(ClientConnected), nameof(ProcessName), nameof(ProcessId),
             nameof(LastUpdate), nameof(IsMonitoring), nameof(CoreStatusText),
             nameof(ClientStatusText), nameof(MonitorStatusText),             nameof(CanStartCore),
-            nameof(ReaderStatus), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText),
+            nameof(ReaderStatus), nameof(ReaderDetail), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText),
             nameof(BotActionLog), nameof(BotSignalSummary), nameof(BotPendingCommand), nameof(BrainActive)
         }) OnPropertyChanged(property);
         ((RelayCommand)OpenSessionCommand).RaiseCanExecuteChanged();

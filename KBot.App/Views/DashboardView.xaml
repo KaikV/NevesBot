@@ -28,7 +28,7 @@
                         <StackPanel Margin="0,8,0,0">
                             <TextBlock Text="{Binding ConfiguredClientPath}" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap"/>
                             <TextBlock Text="{Binding SessionHwndText, StringFormat=HWND: {0}}" Foreground="{DynamicResource MutedText}"/>
-                            <TextBlock Text="{Binding ReaderStatus, StringFormat=Reader: {0}}" Foreground="{DynamicResource MutedText}"/>
+                            <TextBlock Text="{Binding ReaderDetail}" Foreground="{DynamicResource MutedText}" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Expander>
                     <Border Background="{DynamicResource WindowBackground}" CornerRadius="8" Padding="8" Margin="0,14,0,0">

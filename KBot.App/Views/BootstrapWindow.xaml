@@ -1,0 +1,52 @@
+<Window x:Class="KBot.App.Views.BootstrapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KBot · Inicializando" Width="580" Height="600" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" Icon="/KBot.App;component/assets/logo.png"
+        Background="{DynamicResource WindowBackground}">
+    <Border Margin="18" Padding="24" Background="{DynamicResource ElevatedBackground}"
+            BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" CornerRadius="14">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal">
+                <Image Source="/KBot.App;component/assets/logo.png" Width="62" Height="62" Margin="0,0,14,0"/>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="KBOT" Foreground="{DynamicResource PrimaryText}" FontSize="22" FontWeight="Bold"/>
+                    <TextBlock x:Name="ClientNameText" Text="PokeAlliance" Foreground="{DynamicResource AccentBrush}" FontSize="13"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                <TextBlock x:Name="StatusText" Text="Iniciando..." Foreground="{DynamicResource PrimaryText}"
+                           FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                <TextBlock x:Name="ClientStateText" Foreground="{DynamicResource AccentBrush}"
+                           FontSize="13" FontWeight="SemiBold" Margin="0,8,0,0"/>
+                <TextBlock x:Name="SelectedExecutableText" Foreground="{DynamicResource MutedText}"
+                           FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                <ProgressBar x:Name="WaitingProgress" IsIndeterminate="True" Height="5" Margin="0,18,0,0"/>
+                <TextBlock Text="O launcher e o jogo continuam disponíveis para você usar normalmente."
+                           Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="12" Margin="0,12,0,0"/>
+            </StackPanel>
+            <Border Grid.Row="2" Background="{DynamicResource WindowBackground}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="DIAGNÓSTICO DE DETECÇÃO" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <TextBlock x:Name="DetectionDiagnosticText" Foreground="{DynamicResource PrimaryText}" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"/>
+                    <Button Content="VER DETECÇÃO" Click="DetectionClick" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                </StackPanel>
+            </Border>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ConfigureButton" Content="SELECIONAR CLIENTE" Click="ConfigureClick"
+                        Visibility="Collapsed" Margin="0,0,8,0"/>
+                <Button x:Name="RetryButton" Content="INICIAR JOGO" Click="RetryClick"
+                        Visibility="Collapsed" Margin="0,0,8,0"/>
+                <Button x:Name="ChangeButton" Content="Alterar cliente" Click="ChangeClick" Margin="0,0,8,0"/>
+                <Button Content="Configurações" Click="SettingsClick" Margin="0,0,8,0"/>
+                <Button Content="Cancelar" Click="CancelClick" Style="{StaticResource PrimaryButtonStyle}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

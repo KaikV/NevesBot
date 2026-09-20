@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\KBot.App\Models\CavebotWaypoint.cs" Link="CavebotWaypoint.cs" />
+    <Compile Include="..\KBot.App\Models\NativeStatus.cs" Link="NativeStatus.cs" />
+    <Compile Include="..\KBot.App\Models\GameInstallation.cs" Link="GameInstallation.cs" />
+    <Compile Include="..\KBot.App\Models\BotProfile.cs" Link="BotProfile.cs" />
+    <Compile Include="..\KBot.App\Services\CavebotScriptService.cs" Link="CavebotScriptService.cs" />
+    <Compile Include="..\KBot.App\Services\BotProfileService.cs" Link="BotProfileService.cs" />
+  </ItemGroup>
+</Project>

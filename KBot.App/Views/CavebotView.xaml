@@ -1,0 +1,141 @@
+<UserControl x:Class="KBot.App.Views.CavebotView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:KBot.App.ViewModels"
+             xmlns:controls="clr-namespace:KBot.App.Controls">
+    <UserControl.DataContext>
+        <vm:CavebotViewModel />
+    </UserControl.DataContext>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,24">
+            <Border Background="{DynamicResource ElevatedBackground}" BorderBrush="{DynamicResource CardBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="ROTA / CAVEBOT" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="Controle sua rota com clareza" Foreground="{DynamicResource PrimaryText}"
+                                   FontSize="18" FontWeight="SemiBold" Margin="0,6,0,3" />
+                        <TextBlock Text="Waypoints, ações e rotas salvas em um único espaço."
+                                   Foreground="{DynamicResource MutedText}" FontSize="12" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Importar rota" Command="{Binding ImportCommand}" Margin="0,0,8,0" />
+                        <Button Content="Salvar rota" Command="{Binding SaveCommand}" IsEnabled="{Binding HasWaypoints}"
+                                Style="{StaticResource PrimaryButtonStyle}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="1.08*" /><ColumnDefinition Width="0.92*" /></Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                    <controls:CardControl Title="WAYPOINTS" Margin="0,0,0,12">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding RouteName}" Foreground="{DynamicResource PrimaryText}" FontSize="17" FontWeight="SemiBold" />
+                                    <TextBlock Foreground="{DynamicResource MutedText}" FontSize="11" Margin="0,3,0,0">
+                                        <Run Text="{Binding WaypointCount, Mode=OneWay}" /><Run Text=" pontos na rota" />
+                                    </TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="Subir" Command="{Binding MoveUpCommand}" IsEnabled="{Binding HasSelection}" Margin="0,0,6,0" />
+                                    <Button Content="Descer" Command="{Binding MoveDownCommand}" IsEnabled="{Binding HasSelection}" />
+                                </StackPanel>
+                            </Grid>
+                            <Border Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="8">
+                                <Grid>
+                                    <ListBox ItemsSource="{Binding Waypoints}" SelectedItem="{Binding SelectedWaypoint}" Height="245"
+                                             Background="Transparent" BorderThickness="0" Foreground="{DynamicResource PrimaryText}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="3,6">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="34" /><ColumnDefinition Width="*" /><ColumnDefinition Width="100" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Number}" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" Foreground="{DynamicResource PrimaryText}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding Position}" Foreground="{DynamicResource MutedText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Text="Nenhum ponto ainda" Foreground="{DynamicResource MutedText}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+                                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers><DataTrigger Binding="{Binding HasWaypoints}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                        </Style></TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                            <Button Content="Remover ponto selecionado" Command="{Binding RemoveCommand}" IsEnabled="{Binding HasSelection}"
+                                    HorizontalAlignment="Left" Margin="0,10,0,0" />
+                        </StackPanel>
+                    </controls:CardControl>
+
+                    <controls:CardControl Title="ADICIONAR WAYPOINT">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="70" /><ColumnDefinition Width="70" /><ColumnDefinition Width="70" /></Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Margin="0,0,8,8" Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nome do ponto" />
+                            <TextBox Grid.Column="1" Margin="0,0,8,8" Text="{Binding NewX, UpdateSourceTrigger=PropertyChanged}" ToolTip="X" />
+                            <TextBox Grid.Column="2" Margin="0,0,8,8" Text="{Binding NewY, UpdateSourceTrigger=PropertyChanged}" ToolTip="Y" />
+                            <TextBox Grid.Column="3" Margin="0,0,0,8" Text="{Binding NewZ, UpdateSourceTrigger=PropertyChanged}" ToolTip="Z" />
+                            <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{Binding Actions}" SelectedItem="{Binding NewAction}"
+                                      Background="{DynamicResource ElevatedBackground}" Foreground="{DynamicResource PrimaryText}" Padding="7" />
+                            <Button Grid.Row="1" Grid.Column="3" Content="Adicionar" Command="{Binding AddCommand}"
+                                    Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0" />
+                        </Grid>
+                    </controls:CardControl>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                    <controls:CardControl Title="CONTROLE DA ROTA" Margin="0,0,0,12">
+                        <StackPanel>
+                            <Border Background="{DynamicResource WindowBackground}" Padding="12" Margin="0,0,0,10">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="●" Foreground="{DynamicResource WarningBrush}" FontSize="16" Margin="0,0,8,0" />
+                                    <StackPanel><TextBlock Text="Cliente detectado · leitor pendente" Foreground="{DynamicResource PrimaryText}" FontWeight="SemiBold" />
+                                        <TextBlock Text="O PokeAlliance foi encontrado. Falta confirmar a leitura de posição X/Y/Z para ativar a rota automática." Foreground="{DynamicResource MutedText}" FontSize="11" TextWrapping="Wrap" /></StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Button Content="INICIAR" Grid.Column="0" IsEnabled="False" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,5,0" />
+                                <Button Content="PARAR" Grid.Column="1" IsEnabled="False" Margin="5,0,0,0" />
+                            </Grid>
+                            <TextBlock Text="TESTE DE MOVIMENTO" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold" Margin="0,16,0,6" />
+                            <TextBlock Text="Envie um passo por vez para validar a integração com o cliente." Foreground="{DynamicResource MutedText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <Grid HorizontalAlignment="Center">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <Button Grid.Row="0" Content="↑" Command="{Binding StepUpCommand}" Width="54" Height="32" Margin="2" />
+                                <StackPanel Grid.Row="1" Orientation="Horizontal">
+                                    <Button Content="←" Command="{Binding StepLeftCommand}" Width="54" Height="32" Margin="2" />
+                                    <Button Content="↓" Command="{Binding StepDownCommand}" Width="54" Height="32" Margin="2" />
+                                    <Button Content="→" Command="{Binding StepRightCommand}" Width="54" Height="32" Margin="2" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </controls:CardControl>
+                    <controls:CardControl Title="ROTAS SALVAS" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Importe um JSON para carregar uma rota existente ou salve a rota atual com um nome próprio."
+                                       Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="12" />
+                            <Button Content="Abrir pasta de rotas" IsEnabled="False" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                        </StackPanel>
+                    </controls:CardControl>
+                    <controls:CardControl Title="AÇÕES DISPONÍVEIS">
+                        <WrapPanel>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="Walk" Foreground="{DynamicResource AccentBrush}" /></Border>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="Wait" Foreground="{DynamicResource AccentBrush}" /></Border>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="Talk" Foreground="{DynamicResource AccentBrush}" /></Border>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="Use" Foreground="{DynamicResource AccentBrush}" /></Border>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="StartAttacker" Foreground="{DynamicResource AccentBrush}" /></Border>
+                            <Border Background="{DynamicResource ElevatedBackground}" Padding="10" Margin="0,0,6,6"><TextBlock Text="StopAttacker" Foreground="{DynamicResource AccentBrush}" /></Border>
+                        </WrapPanel>
+                    </controls:CardControl>
+                </StackPanel>
+            </Grid>
+            <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,14,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,37 +1,158 @@
 #pragma once
 
 #include <string>
+#include <string.h>
 #include <iostream>
+#include <windows.h>
+#include <TlHelp32.h>
 
-// Reader boundary for the selected client. Addresses are deliberately not
-// embedded here: they must be confirmed for the exact PokeAlliance build
-// before any memory read is enabled.
+// Reads the live character position out of the selected client.
+// Only one confirmed address chain is used; everything else stays pending.
 class ClientReader
 {
 public:
-	void Initialize(unsigned int pid, bool processHandleOpened) noexcept
+	// Confirmed reference offsets for PokeAlliance_gl.exe:
+	//   pointer = *(base + 0x0027D168)
+	//   X = *(int32*)(pointer + 0x0)
+	//   Y = *(int32*)(pointer + 0x4)
+	//   Z = *(int32*)(pointer + 0x8)
+	static constexpr ULONG_PTR PointerOffset = 0x0027D168;
+	static constexpr DWORD XOffset = 0x0;
+	static constexpr DWORD YOffset = 0x4;
+	static constexpr DWORD ZOffset = 0x8;
+
+	void Initialize(unsigned int pid, HANDLE readHandle, const std::string& processName) noexcept
 	{
 		m_pid = pid;
-		m_handleOpened = processHandleOpened;
+		m_readHandle = readHandle;
+		m_processName = processName;
+		m_baseAddress = 0;
+		m_valid = false;
+		m_x = m_y = m_z = 0;
+		SetMessage("Leitura aguardando o primeiro ciclo.");
 		std::cout << "[ClientReader] Initializing pid=" << pid << '\n';
-		std::cout << "[ClientReader] Process handle " << (processHandleOpened ? "opened" : "unavailable") << '\n';
-		std::cout << "[ClientReader] Address provider not configured for this client build" << '\n';
-		std::cout << "[ClientReader] Character state unavailable" << '\n';
+		std::cout << "[ClientReader] Read handle " << (readHandle != INVALID_HANDLE_VALUE ? "opened" : "unavailable") << '\n';
 	}
-	void Reset() noexcept { m_pid = 0; m_handleOpened = false; }
+	void Reset() noexcept
+	{
+		m_pid = 0;
+		m_readHandle = INVALID_HANDLE_VALUE;
+		m_processName.clear();
+		m_baseAddress = 0;
+		m_valid = false;
+		m_x = m_y = m_z = 0;
+		SetMessage("Nenhum PID vinculado ao ClientReader.");
+	}
+
+	// Refresh the cached position. Called before every GET_STATUS.
+	void Poll() noexcept
+	{
+		m_valid = false;
+		if (m_pid == 0 || m_readHandle == INVALID_HANDLE_VALUE)
+		{
+			SetMessage(m_pid == 0 ? "Nenhum PID vinculado ao ClientReader."
+			                     : "ProcessManager nao abriu um handle de leitura (PROCESS_VM_READ) para o PID.");
+			return;
+		}
+		if (!ResolveBase())
+		{
+			SetMessage("Base do modulo principal nao encontrada nesta versao do cliente.");
+			return;
+		}
+		SIZE_T pointer = 0;
+		if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + PointerOffset), &pointer, sizeof(pointer)))
+		{
+			SetMessage("Falha ao ler o ponteiro em base + 0x0027D168; offset possivelmente mudou.");
+			return;
+		}
+		if (pointer == 0)
+		{
+			SetMessage("Ponteiro nulo lido; personagem ainda nao carregado ou offset deslocado.");
+			return;
+		}
+		int x = 0, y = 0, z = 0;
+		if (!ReadMemory(reinterpret_cast<LPCVOID>(pointer + XOffset), &x, sizeof(x)) ||
+			!ReadMemory(reinterpret_cast<LPCVOID>(pointer + YOffset), &y, sizeof(y)) ||
+			!ReadMemory(reinterpret_cast<LPCVOID>(pointer + ZOffset), &z, sizeof(z)))
+		{
+			SetMessage("Ponteiro valido, mas falha ao ler X/Y/Z; offset possivelmente mudou.");
+			return;
+		}
+		m_x = x; m_y = y; m_z = z;
+		m_valid = true;
+		SetMessage("Posicao lida com sucesso.");
+	}
+
 	const char* GetStatus() const noexcept
 	{
 		if (m_pid == 0) return "NOT_ATTACHED";
-		if (!m_handleOpened) return "PROCESS_HANDLE_UNAVAILABLE";
-		return "NOT_CONFIGURED";
+		if (m_readHandle == INVALID_HANDLE_VALUE) return "PROCESS_HANDLE_UNAVAILABLE";
+		return m_valid ? "READY" : "NOT_CONFIGURED";
 	}
-	const char* GetMessage() const noexcept
+	const char* GetMessage() const noexcept { return m_message.c_str(); }
+
+	bool TryGetPosition(int& x, int& y, int& z) const noexcept
 	{
-		if (m_pid == 0) return "Nenhum PID vinculado ao ClientReader.";
-		if (!m_handleOpened) return "ProcessManager nao abriu um handle de consulta para o PID vinculado.";
-		return "Nenhum AddressResolver ou perfil de enderecos confirmado existe para esta versao; estado do personagem indisponivel.";
+		if (!m_valid) return false;
+		x = m_x; y = m_y; z = m_z;
+		return true;
 	}
+	unsigned long long GetBaseAddress() const noexcept { return m_baseAddress; }
+
 private:
 	unsigned int m_pid = 0;
-	bool m_handleOpened = false;
+	HANDLE m_readHandle = INVALID_HANDLE_VALUE;
+	std::string m_processName;
+	ULONG_PTR m_baseAddress = 0;
+	bool m_valid = false;
+	int m_x = 0, m_y = 0, m_z = 0;
+	std::string m_message;
+
+	void SetMessage(std::string value) noexcept { m_message = std::move(value); }
+
+	bool ReadMemory(LPCVOID address, void* destination, SIZE_T size) const noexcept
+	{
+		SIZE_T bytes = 0;
+		return ReadProcessMemory(m_readHandle, address, destination, size, &bytes) == TRUE && bytes == size;
+	}
+
+	static std::wstring Stem(const std::wstring& path)
+	{
+		const auto slash = path.find_last_of(L"\\/");
+		return slash == std::wstring::npos ? path : path.substr(slash + 1);
+	}
+
+	bool ResolveBase()
+	{
+		if (m_baseAddress != 0) return true;
+		HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, m_pid);
+		if (snap == INVALID_HANDLE_VALUE) return false;
+		bool found = false;
+		ULONG_PTR fallback = 0;
+		bool haveFallback = false;
+		MODULEENTRY32W entry;
+		entry.dwSize = sizeof(entry);
+		if (Module32FirstW(snap, &entry))
+		{
+			do
+			{
+				const std::wstring exe = Stem(entry.szExePath);
+				if (!m_processName.empty() &&
+					_wcsicmp(exe.c_str(), std::wstring(m_processName.begin(), m_processName.end()).c_str()) == 0)
+				{
+					m_baseAddress = reinterpret_cast<ULONG_PTR>(entry.modBaseAddr);
+					found = true;
+					break;
+				}
+				if (!haveFallback && exe != L"Unknown" && entry.modBaseAddr != nullptr)
+				{
+					fallback = reinterpret_cast<ULONG_PTR>(entry.modBaseAddr);
+					haveFallback = true;
+				}
+			} while (Module32NextW(snap, &entry));
+		}
+		CloseHandle(snap);
+		if (!found && haveFallback) m_baseAddress = fallback;
+		return m_baseAddress != 0;
+	}
 };

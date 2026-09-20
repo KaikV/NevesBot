@@ -8,7 +8,7 @@ int main()
 	std::cout << "           KBot Native\n";
 	std::cout << "================================\n\n";
 
-	std::string target;
+	std::string target = "PokeAlliance_gl.exe";
 	std::cout << "Target: " << target << "\n\n";
 
 	ProcessManager pm(target);

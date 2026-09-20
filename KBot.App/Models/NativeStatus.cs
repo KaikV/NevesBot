@@ -27,5 +27,17 @@ namespace KBot.App.Models
 
         [JsonPropertyName("characterState")]
         public string? CharacterState { get; set; }
+
+        [JsonPropertyName("hasPosition")]
+        public bool HasPosition { get; set; }
+
+        [JsonPropertyName("posX")]
+        public int PosX { get; set; }
+
+        [JsonPropertyName("posY")]
+        public int PosY { get; set; }
+
+        [JsonPropertyName("posZ")]
+        public int PosZ { get; set; }
     }
 }

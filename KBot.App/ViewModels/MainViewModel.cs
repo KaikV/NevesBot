@@ -11,11 +11,14 @@ namespace KBot.App.ViewModels
         private object _currentView;
         private string _currentSection = "Dashboard";
         private readonly Dictionary<string, SettingsView> _moduleViews;
+        private readonly CavebotViewModel _cavebotViewModel;
 
         public MainViewModel(KBotLifecycle lifecycle)
         {
             DashboardView = new DashboardView(lifecycle);
             CavebotView = new CavebotView();
+            _cavebotViewModel = CavebotView.DataContext as CavebotViewModel ?? new CavebotViewModel();
+            if (CavebotView.DataContext is not _cavebotViewModel) CavebotView.DataContext = _cavebotViewModel;
             var profile = new SettingsViewModel();
             SettingsView = new SettingsView(profile, "Settings");
             _moduleViews = new Dictionary<string, SettingsView>
@@ -78,6 +81,7 @@ namespace KBot.App.ViewModels
         public async Task DisposeAsync()
         {
             await DashboardView.DisposeAsync();
+            _cavebotViewModel.Dispose();
         }
 
         private void Navigate(string? section)

@@ -13,6 +13,7 @@ public:
 	std::string GetProcessName() const noexcept;
 	unsigned long long GetWindowHandle() const noexcept;
 	bool HasProcessHandle() const noexcept;
+	HANDLE GetReadHandle() const noexcept;
 	bool AttachPid(DWORD pid, const std::string& processName);
 	void DetachPid();
 
@@ -21,6 +22,7 @@ private:
 	DWORD m_pid = 0;
 	DWORD m_attachedPid = 0;
 	HANDLE m_handle = INVALID_HANDLE_VALUE;
+	HANDLE m_readHandle = INVALID_HANDLE_VALUE;
 	HWND m_window = nullptr;
 
 	// non-copyable

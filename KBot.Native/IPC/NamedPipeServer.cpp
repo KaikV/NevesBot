@@ -119,6 +119,11 @@ void NamedPipeServer::HandleClient()
 			st.processName = proc;
 		}
 
+		m_reader.Poll();
+
+		int posX = 0, posY = 0, posZ = 0;
+		bool hasPos = m_reader.TryGetPosition(posX, posY, posZ);
+
 		// simple JSON
 		std::ostringstream ss;
 		ss << "{\"nativeOnline\":" << (st.nativeOnline ? "true" : "false")
@@ -127,13 +132,18 @@ void NamedPipeServer::HandleClient()
 		   << ",\"processName\":\"" << EscapeJson(st.processName) << "\""
 		   << ",\"hwnd\":" << (m_pm ? m_pm->GetWindowHandle() : 0)
 		   << ",\"readerStatus\":\"" << m_reader.GetStatus() << "\""
-		   << ",\"readerMessage\":\"" << EscapeJson(m_reader.GetMessage()) << "\"}"
+		   << ",\"readerMessage\":\"" << EscapeJson(m_reader.GetMessage()) << "\""
+		   << ",\"hasPosition\":" << (hasPos ? "true" : "false")
+		   << ",\"posX\":" << posX
+		   << ",\"posY\":" << posY
+		   << ",\"posZ\":" << posZ << "}"
 		;
 
 		response = ss.str() + "\n";
 	}
 	else if (request == "GET_READER_STATUS")
 	{
+		m_reader.Poll();
 		std::ostringstream ss;
 		ss << "{\"status\":\"" << m_reader.GetStatus()
 		   << "\",\"message\":\"" << EscapeJson(m_reader.GetMessage()) << "\"}\n";
@@ -146,7 +156,7 @@ void NamedPipeServer::HandleClient()
 		std::string name;
 		input >> pid >> name;
 		const bool attached = m_pm && pid <= 0xFFFFFFFFUL && m_pm->AttachPid(static_cast<DWORD>(pid), name);
-		if (attached) m_reader.Initialize(m_pm->GetPid(), m_pm->HasProcessHandle());
+		if (attached) m_reader.Initialize(m_pm->GetPid(), m_pm->GetReadHandle(), m_pm->GetProcessName());
 		else m_reader.Reset();
 		response = attached ? "ATTACHED\n" : "ATTACH_FAILED\n";
 	}

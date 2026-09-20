@@ -29,6 +29,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\ProcessManager.h" />
+    <ClInclude Include="Core\ClientReader.h" />
     <ClInclude Include="IPC\NamedPipeServer.h" />
     <ClInclude Include="Models\StatusModel.h" />
   </ItemGroup>

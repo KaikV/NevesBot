@@ -68,6 +68,10 @@ public sealed class DashboardViewModel : ObservableObject
         : NativeOnline ? "Núcleo online. Aguardando conexão com o cliente."
         : "Núcleo offline. Use “Iniciar núcleo” para tentar conectar.";
 
+    public bool HasPosition => ClientConnected && Status?.HasPosition == true;
+    public string PositionText => HasPosition && Status is { } status
+        ? $"{status.PosX}, {status.PosY}, {status.PosZ}" : "—";
+
     private void OnLifecycleChanged(KBotLifecycle _)
     {
         if (_disposed) return;
@@ -86,8 +90,8 @@ public sealed class DashboardViewModel : ObservableObject
             nameof(OpenClientLabel), nameof(SessionMessage), nameof(NativeOnline),
             nameof(ClientConnected), nameof(ProcessName), nameof(ProcessId),
             nameof(LastUpdate), nameof(IsMonitoring), nameof(CoreStatusText),
-            nameof(ClientStatusText), nameof(MonitorStatusText), nameof(CanStartCore),
-            nameof(ReaderStatus), nameof(StatusMessage)
+            nameof(ClientStatusText), nameof(MonitorStatusText),             nameof(CanStartCore),
+            nameof(ReaderStatus), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText)
         }) OnPropertyChanged(property);
         ((RelayCommand)OpenSessionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CaptureSessionCommand).RaiseCanExecuteChanged();

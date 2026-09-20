@@ -154,6 +154,24 @@
                     </StackPanel>
                 </Grid>
             </controls:CardControl>
+
+            <controls:CardControl Title="POSIÇÃO DO PERSONAGEM" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="COORDENADAS X, Y, Z" Foreground="{DynamicResource MutedText}" FontSize="11" />
+                        <TextBlock Text="{Binding PositionText}" Foreground="{DynamicResource AccentBrush}"
+                                   FontSize="22" FontWeight="SemiBold" Margin="0,7,0,0" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="{DynamicResource WindowBackground}" CornerRadius="8" Padding="8" VerticalAlignment="Center">
+                        <TextBlock Text="Leitura pelo núcleo (ReadProcessMemory)." Foreground="{DynamicResource MutedText}"
+                                   FontSize="11" TextWrapping="Wrap" MaxWidth="240" />
+                    </Border>
+                </Grid>
+            </controls:CardControl>
                 </StackPanel>
             </Expander>
 

@@ -15,6 +15,11 @@ ProcessManager::~ProcessManager()
 		CloseHandle(m_handle);
 		m_handle = INVALID_HANDLE_VALUE;
 	}
+	if (m_readHandle != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(m_readHandle);
+		m_readHandle = INVALID_HANDLE_VALUE;
+	}
 }
 
 void ProcessManager::Refresh()
@@ -26,6 +31,11 @@ void ProcessManager::Refresh()
 		CloseHandle(m_handle);
 		m_handle = INVALID_HANDLE_VALUE;
 	}
+	if (m_readHandle != INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(m_readHandle);
+		m_readHandle = INVALID_HANDLE_VALUE;
+	}
 
 	if (m_attachedPid != 0)
 	{
@@ -35,6 +45,7 @@ void ProcessManager::Refresh()
 		{
 			m_pid = m_attachedPid;
 			m_handle = attached;
+			m_readHandle = OpenProcess(PROCESS_VM_READ, FALSE, m_attachedPid);
 			FindWindowByTitle();
 			return;
 		}
@@ -70,11 +81,16 @@ void ProcessManager::Refresh()
 
 	if (m_pid != 0)
 	{
-		// Open with least privileges necessary
+		// Keep the status handle minimal; memory reads use a separate PROCESS_VM_READ handle.
 		m_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, m_pid);
 		if (m_handle == nullptr)
 		{
 			m_handle = INVALID_HANDLE_VALUE;
+		}
+		m_readHandle = OpenProcess(PROCESS_VM_READ, FALSE, m_pid);
+		if (m_readHandle == nullptr)
+		{
+			m_readHandle = INVALID_HANDLE_VALUE;
 		}
 	}
 }
@@ -127,6 +143,11 @@ unsigned long long ProcessManager::GetWindowHandle() const noexcept
 bool ProcessManager::HasProcessHandle() const noexcept
 {
 	return m_handle != nullptr && m_handle != INVALID_HANDLE_VALUE;
+}
+
+HANDLE ProcessManager::GetReadHandle() const noexcept
+{
+	return m_readHandle;
 }
 
 void ProcessManager::FindWindowByTitle()

@@ -4,6 +4,7 @@ using Microsoft.Win32;
 using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Windows.Input;
 using System.Threading.Tasks;
 
@@ -21,6 +22,7 @@ public sealed class CavebotViewModel : ObservableObject
     private string _routeName = "Nova rota";
     private string? _currentFile;
     private readonly NativeService _nativeService = new();
+    private readonly CavebotNavigator _navigator;
 
     public ObservableCollection<CavebotWaypoint> Waypoints { get; } = new();
     public Array Actions => Enum.GetValues<WaypointAction>();
@@ -35,19 +37,33 @@ public sealed class CavebotViewModel : ObservableObject
     public WaypointAction NewAction { get => _newAction; set => Set(ref _newAction, value); }
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
     public string RouteName { get => _routeName; private set => Set(ref _routeName, value); }
+    public string NavigatorStatus => _navigator.Status;
+    public bool CanStartRoute => _navigator is { IsRunning: false } && HasWaypoints;
+    public bool RouteRunning => _navigator.IsRunning;
 
-    public ICommand ImportCommand { get; }
-    public ICommand SaveCommand { get; }
-    public ICommand AddCommand { get; }
-    public ICommand RemoveCommand { get; }
-    public ICommand MoveUpCommand { get; }
-    public ICommand MoveDownCommand { get; }
-    public ICommand StepUpCommand { get; }
-    public ICommand StepDownCommand { get; }
-    public ICommand StepLeftCommand { get; }
-    public ICommand StepRightCommand { get; }
+    public ICommand ImportCommand { get; } = null!;
+    public ICommand SaveCommand { get; } = null!;
+    public ICommand AddCommand { get; } = null!;
+    public ICommand RemoveCommand { get; } = null!;
+    public ICommand MoveUpCommand { get; } = null!;
+    public ICommand MoveDownCommand { get; } = null!;
+    public ICommand StepUpCommand { get; } = null!;
+    public ICommand StepDownCommand { get; } = null!;
+    public ICommand StepLeftCommand { get; } = null!;
+    public ICommand StepRightCommand { get; } = null!;
+    public ICommand StartRouteCommand { get; } = null!;
+    public ICommand StopRouteCommand { get; } = null!;
 
     public CavebotViewModel()
+    {
+        _navigator = new CavebotNavigator(_nativeService);
+        _navigator.Changed += OnNavigatorChanged;
+        InitializeCommands();
+    }
+
+    public void Dispose() => _navigator.Dispose();
+
+    private void InitializeCommands()
     {
         ImportCommand = new RelayCommand(_ => Import());
         SaveCommand = new RelayCommand(_ => Save());
@@ -59,6 +75,39 @@ public sealed class CavebotViewModel : ObservableObject
         StepDownCommand = new RelayCommand(async _ => await StepAsync("DOWN"));
         StepLeftCommand = new RelayCommand(async _ => await StepAsync("LEFT"));
         StepRightCommand = new RelayCommand(async _ => await StepAsync("RIGHT"));
+        StartRouteCommand = new RelayCommand(_ => StartRouteAsync(), _ => CanStartRoute);
+        StopRouteCommand = new RelayCommand(_ => StopRoute(), _ => _navigator.IsRunning);
+        RaiseRouteState();
+    }
+
+    private void RaiseRouteState()
+    {
+        OnPropertyChanged(nameof(NavigatorStatus));
+        OnPropertyChanged(nameof(CanStartRoute));
+        OnPropertyChanged(nameof(RouteRunning));
+        ((RelayCommand)StartRouteCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)StopRouteCommand).RaiseCanExecuteChanged();
+    }
+
+    private void OnNavigatorChanged()
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess()) dispatcher.InvokeAsync(RaiseRouteState);
+        else RaiseRouteState();
+    }
+
+    private void StartRouteAsync()
+    {
+        if (_navigator.IsRunning || !HasWaypoints) return;
+        Feedback = "Iniciando rota...";
+        _ = _navigator.StartAsync(Waypoints.ToList());
+    }
+
+    private void StopRoute()
+    {
+        if (!_navigator.IsRunning) return;
+        _navigator.Stop();
+        Feedback = "Solicitando parada da rota...";
     }
 
     private async Task StepAsync(string key)
@@ -160,5 +209,6 @@ public sealed class CavebotViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasWaypoints));
         OnPropertyChanged(nameof(WaypointCount));
+        RaiseRouteState();
     }
 }

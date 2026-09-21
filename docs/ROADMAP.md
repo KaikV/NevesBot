@@ -164,6 +164,8 @@ passou no teste headless e (quando depender de runtime) no seu Windows.
   no teste headless; "detectar batalha" passa a usar `attackingCreature` + nº de wilds.
 
 ### ETAPA 3 — Walk contínuo + anti-detecção (cavebot de verdade)
+- **Status:** ✅ decisão pronta — `CavebotRecorder.cs` (regra de gravar rota, teste headless A–E).
+  Faltam o transporte C++ de caminhada (prewalk/timing humanizado) e a gravação UI.
 - **Objetivo:** andar tile a tile com timing humanizado, não "anda/para".
 - **Como confiro:** `cavebot/walking.lua` (stepDur + drift suave + ruído ≤ ~28ms/passo) e
   `recorder.lua` (distância 1-9, sorteio por sessão).

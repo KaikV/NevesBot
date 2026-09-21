@@ -310,6 +310,7 @@ static string ConfigShareServiceChecksumHelper(string body)
 RunPmChecks();
 RunSocorroChecks();
 RunScanChecks();
+RunWalkChecks();
 
 static void RunSocorroChecks()
 {
@@ -503,6 +504,79 @@ static void RunScanChecks()
             "No scan => unknown (null), never a guessed zero");
     }
 }
+
+static void RunWalkChecks()
+{
+    static RecordAction Step(
+        int x, int y, int z, StepEvent? last = null,
+        int dist = 5, int roll = 3, long now = 100000, long? lastUse = null)
+        => CavebotRecorder.OnStep(new(x, y, z), last, dist, roll, now, lastUse);
+
+    // A) Distance rule: a sane configured value (1-9) wins; otherwise fall back to the
+    //    per-session roll, clamped to 1..5. This is why two cave-bots stop stamping at
+    //    identical, predictable intervals.
+    {
+        Check(CavebotRecorder.Dist(3, 1) == 3, "Configured 3 used as-is");
+        Check(CavebotRecorder.Dist(9, 1) == 9, "Configured 9 is the max");
+        Check(CavebotRecorder.Dist(0, 4) == 4, "Configured 0 falls back to the roll");
+        Check(CavebotRecorder.Dist(12, 2) == 2, "Out-of-range 12 falls back to the roll");
+        Check(CavebotRecorder.Dist(0, 9) == 5, "The roll itself is clamped to 5");
+        Check(CavebotRecorder.Dist(0, 0) == 1, "The roll is clamped to 1");
+    }
+
+    // B) First step always drops a position (recorder adds oldPos on first contact).
+    {
+        Check(Step(10, 10, 0, last: null) == RecordAction.Position,
+            "First step stamps a position");
+    }
+
+    // C) Same floor: too close -> nothing; far enough -> a position. The reach is
+    //    Chebyshev against the DISTANCE (default 5). This is also where a fast player
+    //    (2+ tiles/poll) and same-floor teleports land - as a clean goto.
+    {
+        var last = new StepEvent(0, 0, 0);
+        Check(Step(2, 2, 0, last) == RecordAction.None,
+            "Chebyshev 2 (<5): no stamp yet");
+        Check(Step(4, 4, 0, last) == RecordAction.None,
+            "Chebyshev 4 (<5): still no stamp");
+        Check(Step(4, 5, 0, last) == RecordAction.Position,
+            "Chebyshev 5 (==dist): stamps");
+        Check(Step(-9, 1, 0, last) == RecordAction.Position,
+            "Far diagonal stamps as a clean goto, not a fake stairs");
+        // A smaller configured distance tightens the grid.
+        Check(Step(3, 0, 0, last, dist: 2) == RecordAction.Position,
+            "Chebyshev 3 with dist=2 stamps");
+        Check(Step(1, 1, 0, last, dist: 2) == RecordAction.None,
+            "Chebyshev 1 with dist=2 does not stamp");
+    }
+
+    // D) Floor change is a STAIRS step - even when the tiles are adjacent (up/down keep
+    //    x,y), because playback must step onto the tile before using it.
+    {
+        var last = new StepEvent(0, 0, 0);
+        Check(Step(0, 0, 1, last) == RecordAction.Stairs,
+            "z change on the same x,y = stairs (up straight)");
+        Check(Step(1, 0, 2, last) == RecordAction.Stairs,
+            "z change anywhere = stairs, not a normal goto");
+    }
+
+    // E) A floor change that happened right after using an item on the ground is NOT a
+    //    staircase - the USE action already captured the transition. Outside the window
+    //    it goes back to being a real stairs.
+    {
+        var last = new StepEvent(0, 0, 0);
+        // now = 100000; a use at 99900 is 100ms ago (inside the 2500ms window).
+        Check(Step(0, 0, 1, last, lastUse: 99900) == RecordAction.None,
+            "Floor change right after a use is swallowed");
+        // A use at 96000 is 4000ms ago (outside the window) -> real stairs again.
+        Check(Step(0, 0, 1, last, lastUse: 96000) == RecordAction.Stairs,
+            "Floor change outside the use window is a stairs");
+        // No recent use at all -> stairs.
+        Check(Step(0, 0, 1, last, lastUse: null) == RecordAction.Stairs,
+            "No prior use: floor change is a stairs");
+    }
+}
+
 
 
 static void RunPmChecks()

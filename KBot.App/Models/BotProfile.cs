@@ -41,6 +41,14 @@ public sealed class BotProfile
     public string PauseAttackerHotkey { get; set; } = string.Empty;
     public bool FishingEnabled { get; set; }
     public string FishingHotkey { get; set; } = "Ctrl+Z";
+    // Seconds between casts (0_AD_fish.lua). 0 = default 13s (the server answer rhythm).
+    public int FishingDelaySeconds { get; set; } = 13;
+    // Max wild pokemons nearby before fishing pauses (so you can fight them). -1 = never pause.
+    public int FishingMaxPoke { get; set; } = -1;
+    // Radius (tiles) to scan for the nearest water tile. Clamped to [1,12] at runtime.
+    public int FishingRaio { get; set; } = 7;
+    // Server item id of the fishing-spot object on the ground (Lua default 48415).
+    public int FishingWaterId { get; set; } = 48415;
     public int FishingX { get; set; }
     public int FishingY { get; set; }
     public bool CatchEnabled { get; set; }

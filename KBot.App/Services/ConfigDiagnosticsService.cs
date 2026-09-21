@@ -26,7 +26,7 @@ public static class ConfigDiagnosticsService
                 ? Ok("Coleta", $"Hotkey {p.LootHotkey} configurada para coleta fora de batalha.")
                 : Warn("Coleta", "Sem hotkey de coleta definida no perfil."));
         if (p.FishingEnabled)
-            items.Add(Ok("Pesca", $"Ponto ({p.FishingX},{p.FishingY}) com {Safe(p.FishingHotkey)} — o módulo lança isca a cada ~4s fora de batalha."));
+            items.Add(Ok("Pesca", $"Ponto ({p.FishingX},{p.FishingY}) com {Safe(p.FishingHotkey)} — o módulo lança a vara no ponto mais próximo a cada {p.FishingDelaySeconds}s, no ritmo do servidor."));
         if (p.AlertsEnabled)
             items.Add(Ok("Alertas", "Sinal de puxão/GM detectado pelo brain; entrega por Telegram ainda não conectada."));
         if (p.HotkeysEnabled)

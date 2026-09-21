@@ -51,6 +51,10 @@ public sealed class SettingsViewModel : ObservableObject
     private string _fishingHotkey = "Ctrl+Z";
     private string _fishingX = "0";
     private string _fishingY = "0";
+    private string _fishingDelaySeconds = "13";
+    private string _fishingMaxPoke = "-1";
+    private string _fishingRaio = "7";
+    private string _fishingWaterId = "48415";
     private bool _catchEnabled;
     private string _catchHotkey = string.Empty;
     private bool _lootEnabled;
@@ -92,6 +96,10 @@ public sealed class SettingsViewModel : ObservableObject
     public string FishingHotkey { get => _fishingHotkey; set => Set(ref _fishingHotkey, value); }
     public string FishingX { get => _fishingX; set => Set(ref _fishingX, value); }
     public string FishingY { get => _fishingY; set => Set(ref _fishingY, value); }
+    public string FishingDelaySeconds { get => _fishingDelaySeconds; set => Set(ref _fishingDelaySeconds, value); }
+    public string FishingMaxPoke { get => _fishingMaxPoke; set => Set(ref _fishingMaxPoke, value); }
+    public string FishingRaio { get => _fishingRaio; set => Set(ref _fishingRaio, value); }
+    public string FishingWaterId { get => _fishingWaterId; set => Set(ref _fishingWaterId, value); }
     public bool CatchEnabled { get => _catchEnabled; set => Set(ref _catchEnabled, value); }
     public string CatchHotkey { get => _catchHotkey; set => Set(ref _catchHotkey, value); }
     public bool LootEnabled { get => _lootEnabled; set => Set(ref _lootEnabled, value); }
@@ -174,6 +182,26 @@ public sealed class SettingsViewModel : ObservableObject
             Feedback = "As coordenadas da pesca devem ser números inteiros maiores ou iguais a zero.";
             return null;
         }
+        if (!int.TryParse(FishingDelaySeconds, out var fishingDelaySeconds) || fishingDelaySeconds < 1)
+        {
+            Feedback = "O delay da pesca deve ser um número inteiro de segundos maior ou igual a 1.";
+            return null;
+        }
+        if (!int.TryParse(FishingMaxPoke, out var fishingMaxPoke) || fishingMaxPoke < -1)
+        {
+            Feedback = "O limite de pokes perto deve ser um número inteiro (use -1 para nunca pausar).";
+            return null;
+        }
+        if (!int.TryParse(FishingRaio, out var fishingRaio) || fishingRaio < 1 || fishingRaio > 12)
+        {
+            Feedback = "O alcance da busca do ponto de pesca deve estar entre 1 e 12.";
+            return null;
+        }
+        if (!int.TryParse(FishingWaterId, out var fishingWaterId) || fishingWaterId <= 0)
+        {
+            Feedback = "O ID do ponto de pesca deve ser um número inteiro maior que zero.";
+            return null;
+        }
         if (CureAtPercent < 0 || CureAtPercent > 100)
         {
             Feedback = "O limite de cura deve estar entre 0 e 100.";
@@ -224,6 +252,10 @@ public sealed class SettingsViewModel : ObservableObject
             FishingHotkey = FishingHotkey,
             FishingX = fishingX,
             FishingY = fishingY,
+            FishingDelaySeconds = fishingDelaySeconds,
+            FishingMaxPoke = fishingMaxPoke,
+            FishingRaio = fishingRaio,
+            FishingWaterId = fishingWaterId,
             CatchEnabled = CatchEnabled,
             CatchHotkey = CatchHotkey,
             LootEnabled = LootEnabled,
@@ -363,6 +395,10 @@ public sealed class SettingsViewModel : ObservableObject
         FishingHotkey = profile.FishingHotkey;
         FishingX = profile.FishingX.ToString();
         FishingY = profile.FishingY.ToString();
+        FishingDelaySeconds = profile.FishingDelaySeconds.ToString();
+        FishingMaxPoke = profile.FishingMaxPoke.ToString();
+        FishingRaio = profile.FishingRaio.ToString();
+        FishingWaterId = profile.FishingWaterId.ToString();
         CatchEnabled = profile.CatchEnabled;
         CatchHotkey = profile.CatchHotkey;
         LootEnabled = profile.LootEnabled;

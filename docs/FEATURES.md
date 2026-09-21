@@ -8,9 +8,9 @@ tela no menu lateral. A tela **Configurações** reúne todas as opções e impo
 | Cavebot | Importar, editar, reordenar e salvar waypoints JSON | Pendente: leitura de posição e navegação |
 | Alvos | Lista ordenada de criaturas | Pendente: lista de batalha e seleção de alvo |
 | Cura e revive | HP para revive, HP fora da batalha, teclas de revive e comida, magias F1–F9 com cooldown | Pendente: leitura de HP/estado e envio de teclas |
-| Alertas | Preferência de alertas e atalhos manuais de pausa/revive | Pendente: leitura de mensagens e captura de atalhos |
-| Pesca | Preferência, ponto em pixels e atalho de pesca | Pendente: detecção do estado de pesca e envio de entrada |
-| Captura | Preferência e atalho | Pendente: detecção de alvo e resultado |
+| Alertas | Preferência de alertas e atalhos manuais de pausa/revive | Decisão pronta (morte, nível, jogador saiu, suprimento, capturou); pendente: leitura de chat e de inventário |
+| Pesca | Preferência, ponto em pixels e atalho de pesca | Decisão de cadência pronta (ritmo do servidor, pausa por selvagens); pendente: leitura da vara e do ponto d'água |
+| Captura | Preferência e atalho | Decisão pronta (bola por corpo + shiny); pendente: leitura dos corpos na tela |
 | Coleta | Preferência e atalho | Pendente: reconhecimento dos objetos |
 
 As opções são salvas em `%LOCALAPPDATA%\KBot\profile.json`. Salvar uma preferência não inicia

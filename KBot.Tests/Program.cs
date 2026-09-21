@@ -314,6 +314,7 @@ RunWalkChecks();
 RunTargetChecks();
 RunCatchChecks();
 RunAlertChecks();
+RunFishingChecks();
 
 static void RunSocorroChecks()
 {
@@ -861,6 +862,86 @@ static void RunAlertChecks()
         };
         Check(mod.Decide(caught, p) is { Channel: ActionChannel.Command, Payload: "alert:capturou:Shiny Dratini" },
             $"Module emits capturou alert from server line (got {mod.Decide(caught, p)})");
+    }
+}
+
+static void RunFishingChecks()
+{
+    // ---------- FishingGate: settle-after-login (no cast in first 3s) ----------
+    {
+        var g = new FishingGate();
+        Check(!g.ShouldCast(1000, 0, long.MinValue, 0, 13000, -1, 0, false), "Within boot settle: no cast");
+        Check(!g.ShouldCast(2999, 0, long.MinValue, 0, 13000, -1, 0, false), "Still in settle window: no cast");
+    }
+
+    // ---------- Cadence: never faster than configured base ----------
+    {
+        var g = new FishingGate();
+        Check(g.ShouldCast(14000, 0, 1000, 0, 13000, -1, 0, false), "After base cadence: casts");
+        Check(!g.ShouldCast(12000, 0, 1000, 0, 13000, -1, 0, false), "Before base cadence: no cast");
+    }
+
+    // ---------- Ping-aware: cadence stretches to the round-trip when laggy ----------
+    {
+        var g = new FishingGate();
+        // Base is 13s but the ping alone is 20s: must wait out the full round-trip.
+        Check(!g.ShouldCast(15000, 0, 1000, 20000, 13000, -1, 0, false), "Ping > base: no cast yet");
+        Check(g.ShouldCast(22000, 0, 1000, 20000, 13000, -1, 0, false), "After full ping round-trip: casts");
+        // Low ping must NOT shorten the base cadence.
+        var g2 = new FishingGate();
+        Check(!g2.ShouldCast(8000, 0, 1000, 100, 13000, -1, 0, false), "Low ping does not beat the base cadence");
+    }
+
+    // ---------- Max-poke pause: >= limit stops fishing, 1x/s recheck backoff ----------
+    {
+        var g = new FishingGate();
+        Check(!g.ShouldCast(20000, 0, 1000, 0, 13000, 3, 5, false), $"Wilds >= maxPoke pauses (paused={g.Paused})");
+        // Next tick still within the 1s recheck window: keeps the last result without re-reading.
+        Check(!g.ShouldCast(20999, 0, 1000, 0, 13000, 3, 0, false), "Inside recheck window: stays paused");
+        // One second later the count is re-read: wilds are gone -> resumes.
+        Check(g.ShouldCast(22000, 0, 1000, 0, 13000, 3, 1, false), "Recheck sees fewer wilds: resumes");
+        // maxPoke < 0 = never pause, even with a crowd around.
+        var g2 = new FishingGate();
+        Check(g2.ShouldCast(20000, 0, 1000, 0, 13000, -1, 99, false), "maxPoke=-1: never pauses on wilds");
+    }
+
+    // ---------- Cross-system busy: catch/loot owns the turn, fishing yields ----------
+    {
+        var g = new FishingGate();
+        Check(!g.ShouldCast(20000, 0, 1000, 0, 13000, -1, 0, true), "Cross-system busy: no cast");
+        Check(g.ShouldCast(20000, 0, 1000, 0, 13000, -1, 0, false), "Not busy: casts");
+    }
+
+    // ---------- Raio clamp ----------
+    {
+        Check(FishingGate.ClampRaio(0) == FishingGate.MinRaio, "Raio clamps low to 1");
+        Check(FishingGate.ClampRaio(99) == FishingGate.MaxRaio, "Raio clamps high to 12");
+        Check(FishingGate.ClampRaio(7) == 7, "Raio passes through in-range value");
+    }
+
+    // ---------- FishingModule integration (via ProfileView) ----------
+    {
+        var p = new ProfileView(new BotProfile
+        {
+            FishingEnabled = true, FishingDelaySeconds = 2
+        });
+        var mod = new FishingModule();
+
+        var s1 = new GameState { ClientConnected = true, InGame = true, NowMs = 0 };
+        Check(mod.Decide(s1, p) is null, "Module: first tick is inside boot settle");
+
+        // 2s delay, 3s+ of settle elapsed since the first tick: casts and arms the cadence clock.
+        var s2 = new GameState { ClientConnected = true, InGame = true, NowMs = 5000 };
+        Check(mod.Decide(s2, p) is { Channel: ActionChannel.Command, Payload: "fish" },
+            $"Module: casts once past settle + cadence (got {mod.Decide(s2, p)})");
+
+        // Immediately after: cadence holds.
+        var s3 = new GameState { ClientConnected = true, InGame = true, NowMs = 6500 };
+        Check(mod.Decide(s3, p) is null, "Module: cadence holds right after a cast");
+
+        // Enough time passes: next cast lands.
+        var s4 = new GameState { ClientConnected = true, InGame = true, NowMs = 8000 };
+        Check(mod.Decide(s4, p) is { Channel: ActionChannel.Command, Payload: "fish" }, "Module: next cast after cadence");
     }
 }
 

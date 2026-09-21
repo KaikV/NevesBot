@@ -156,8 +156,8 @@
             </controls:CardControl>
             <controls:CardControl x:Name="FishingCard" Title="PESCA" Margin="0,0,0,16">
                 <StackPanel>
-                    <TextBlock Text="Defina o ponto de pesca na tela e o atalho correspondente. As coordenadas são pixels da tela."
-                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <TextBlock Text="O bot procura o item do ponto de pesca no chão e joga a vara no mais próximo. Menos de ~13s entre lançadas não pesca mais rápido: o servidor responde nesse ritmo."
+                                Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
                     <CheckBox Content="Pescar sozinho" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding FishingEnabled}"
                               Margin="0,0,0,14" />
                     <Grid>
@@ -173,6 +173,25 @@
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="ATALHO DE PESCA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
                             <TextBox Text="{Binding FishingHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <TextBlock Text="DELAY ENTRE LANÇADAS (s)" Foreground="{DynamicResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingDelaySeconds, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="PARAR SE POKES PERTO &gt;=" Foreground="{DynamicResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingMaxPoke, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="0,0,10,0">
+                            <TextBlock Text="BUSCAR ATÉ (TILES)" Foreground="{DynamicResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingRaio, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="ID DO PONTO DE PESCA" Foreground="{DynamicResource MutedText}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingWaterId, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>

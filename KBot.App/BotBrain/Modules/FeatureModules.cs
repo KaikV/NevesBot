@@ -145,19 +145,42 @@ public sealed class AlertsModule : IBotModule
     private bool CanFire(GameState s) => _lastAlertMs < 0 || s.NowMs - _lastAlertMs >= AlertCooldownMs;
 }
 
-// Port of the fishing panel. Priority 55 (after alerts, before route): when
-// fishing is enabled, we are in game and not in battle, cast the fishing hook.
+// Port of the fishing panel (0_AD_fish.lua). Priority 55 (after alerts, before route):
+// when fishing is enabled, in-game and not in battle, cast the rod at the
+// server's own rhythm (default ~13s - casting faster does not catch faster).
+// The cast gate (settle-after-login, cadence, max-poke pause) is pure logic in
+// FishingGate.cs; the rod-equipped / water-tile reads are transport concerns and
+// degrade to "cannot cast" until they land.
 public sealed class FishingModule : IBotModule
 {
     public string Name => "Pesca";
     public int Priority => 55;
 
-    private long _lastCastMs;
+    private readonly FishingGate _gate = new();
+    private long _lastCastMs = long.MinValue;
+    private long? _sessionStartMs;   // first tick we saw in-game (settle gate anchor)
+    public string Status { get; private set; } = "";
 
     public ActionIntent? Decide(GameState s, IProfileView p)
     {
-        if (!p.FishingEnabled || s.InBattle == true) return null;
-        if (s.NowMs - _lastCastMs < 4000) return null; // one hook every ~4s
+        if (!p.FishingEnabled || s.InBattle == true) { _sessionStartMs = null; return null; }
+
+        // Anchor the settle clock to the first in-game tick of this session.
+        _sessionStartMs ??= s.NowMs;
+        long sessionStart = _sessionStartMs.Value;
+
+        int baseMs = p.FishingDelaySeconds > 0 ? p.FishingDelaySeconds * 1000 : FishingGate.DefaultCastDelayMs;
+        bool cast = _gate.ShouldCast(
+            s.NowMs, sessionStart,
+            lastCastMs: _lastCastMs < sessionStart ? sessionStart - FishingGate.DefaultCastDelayMs : _lastCastMs,
+            pingMs: 0,                       // native ping read not wired yet -> use base cadence
+            castDelayMs: baseMs,
+            maxPoke: p.FishingMaxPoke,
+            wildsNearby: s.WildsNearby,
+            crossBusy: false);               // catch/loot busy flag arrives via GameState when wired
+
+        Status = cast ? "lançando vara" : (_gate.Paused ? "pausado (pokes perto)" : "aguardando");
+        if (!cast) return null;
         _lastCastMs = s.NowMs;
         return ActionIntent.Command("fish");
     }

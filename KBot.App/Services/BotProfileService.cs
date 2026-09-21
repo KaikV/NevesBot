@@ -115,6 +115,8 @@ public static class BotProfileService
         profile.FishingHotkey = NormalizeHotkey(profile.FishingHotkey, "Ctrl+Z");
         profile.FishingX = Math.Max(0, profile.FishingX);
         profile.FishingY = Math.Max(0, profile.FishingY);
+        profile.FishingRaio = Math.Clamp(profile.FishingRaio, 1, 12);
+        profile.FishingDelaySeconds = Math.Max(1, profile.FishingDelaySeconds);
         profile.CatchHotkey = profile.CatchHotkey?.Trim() ?? string.Empty;
         profile.LootHotkey = profile.LootHotkey?.Trim() ?? string.Empty;
         return profile;

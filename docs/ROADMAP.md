@@ -92,7 +92,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 ### Pesca (aba Pesca)
 | Feature | Fonte | Como funciona | KBot |
 | --- | --- | --- | --- |
-| Auto-pesca | `0_AD_fish.lua` | Lança vara num **tile d'água fixo** (coordenada do jogo, não pixel); opcional: para quando tem N selvagens no range (pra lutar com eles) | 🟧 `FishingModule` existe; precisa de posição + tile alvo |
+| Auto-pesca | `0_AD_fish.lua` | Lança vara no **ponto de pesca mais próximo** (item `waterId` no chão, raio 1..12 tiles); cadência **ping-aware** (nunca menor que `max(base, ping)`, default 13s — o ritmo que o servidor responde); pausa quando ≥ N selvagens no range (recheque 1x/s com backoff); cede o turno se catch/loot estiver ocupado | 🟧 port da decisão em FishingGate.cs (settle 3s / cadência / pausa maxPoke / cross-busy / clamp raio) + FishingModule emite `fish`, teste headless; **falta**: leitura da vara no slot 2 e do tile d'água (transport) |
 
 ### Alertas (aba Alertas) — motor `sofaAL`
 | Feature | Fonte | Como funciona | KBot |
@@ -199,6 +199,7 @@ passou no teste headless e (quando depender de runtime) no seu Windows.
 - **Objetivo:** lançar vara no tile d'água fixo; parar quando N selvagens no range.
 - **Como confiro:** `0_AD_fish.lua` (tile do jogo, não pixel; `getSpectatorsInRange`).
 - **Depende de:** ETAPA 0 + 2.
+- **Status:** decisão pura (gate de lance: settle/cadência ping-aware/pausa maxPoke/cross-busy) em FishingGate.cs testada headless; falta a leitura da vara e do item d'água no tile.
 
 ### ETAPA 8 — Features de apoio (auto-hunts, buffs, inspetor, voar, antiafk, guild, caixa-preta)
 - Cada uma isolada, mesmo padrão: espelhar a fonte, testar headless a decisão, integrar ao runtime.

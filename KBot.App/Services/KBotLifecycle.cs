@@ -15,15 +15,19 @@ public sealed class KBotLifecycle : IDisposable
     private readonly NativeService _native = new();
     private readonly PositionOffsetStore _offsetStore = new();
     private readonly ICharacterSessionDetector _characterDetector;
+    private readonly IScreenScanSource _screenScanSource;
     private CancellationTokenSource? _cancellation;
     private Task? _runTask;
     private bool _disposed;
     private string? _loggedReaderStatus;
     private bool? _launcherWasRunning;
+    private bool _clientAttached;
+    private int _badCoreTicks;
 
-    public KBotLifecycle(ICharacterSessionDetector? characterDetector = null)
+    public KBotLifecycle(ICharacterSessionDetector? characterDetector = null, IScreenScanSource? screenScanSource = null)
     {
         _characterDetector = characterDetector ?? new CharacterSessionDetector();
+        _screenScanSource = screenScanSource ?? new NoScreenScanSource();
     }
 
     public KBotLifecycleState State { get; private set; } = KBotLifecycleState.Booting;
@@ -58,6 +62,7 @@ public sealed class KBotLifecycle : IDisposable
     private async Task RunAsync(GameInstallation? selected, CancellationToken cancellationToken)
     {
         GameSession? session = null;
+        var firstPass = true;
         try
         {
             CharacterSession = null;
@@ -70,9 +75,12 @@ public sealed class KBotLifecycle : IDisposable
             GameSession = null;
             LauncherSession = null;
             SetState(KBotLifecycleState.Booting, "Verificando PokeAlliance...");
-            var installation = selected ?? _library.Load().FirstOrDefault(c =>
-                c.Name.Equals("PokeAlliance", StringComparison.OrdinalIgnoreCase) ||
-                Path.GetFileName(c.LauncherPath).Contains("PokeAlliance", StringComparison.OrdinalIgnoreCase));
+            var installations = _library.Load();
+            var installation = selected ??
+                installations.FirstOrDefault(c =>
+                    c.Name.Equals("PokeAlliance", StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileName(c.LauncherPath).Contains("PokeAlliance", StringComparison.OrdinalIgnoreCase)) ??
+                installations.FirstOrDefault();
             if (installation is null)
             {
                 Installation = null;
@@ -83,96 +91,173 @@ public sealed class KBotLifecycle : IDisposable
             Changed?.Invoke(this);
             _native.StartCore();
 
-            var launcher = _launcher.FindRunning(installation);
-            var found = _watcher.FindRunning(installation, launcher);
-            if (!found.HasValue)
-            {
-                if (launcher is null)
-                {
-                    SetState(KBotLifecycleState.LaunchingClient, "Iniciando PokeAlliance...");
-                    launcher = _launcher.Launch(installation);
-                }
-                LauncherSession = launcher;
-                HandoffStatus = $"Launcher PID {launcher.LauncherPid}; aguardando cliente real.";
-                Trace.WriteLine($"[Handoff] Launcher opened pid={launcher.LauncherPid}; waiting for game process");
-                SetState(KBotLifecycleState.WaitingForProcess, "Launcher aberto. Aguardando o jogo...");
-                found = await _watcher.WaitForGameAsync(installation, launcher, cancellationToken);
-            }
-            else LauncherSession = launcher;
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (string.Equals(found.Value.Path, installation.LauncherPath, StringComparison.OrdinalIgnoreCase))
-                LauncherSession = null; // The selected executable is the game itself.
-            SetState(KBotLifecycleState.ProcessDetected, "Cliente encontrado. Validando conexão...");
-            SetState(KBotLifecycleState.WaitingForWindow, "Validando janela do cliente...");
-            session = new GameSession(found.Value.Process, found.Value.Handle, found.Value.Path);
-            GameSession = session;
-            HandoffStatus = LauncherSession is null
-                ? $"Cliente direto: GameSession PID {session.Pid}."
-                : $"Launcher PID {LauncherSession.LauncherPid} → Game PID {session.Pid}.";
-            Trace.WriteLine($"[Handoff] Game process detected pid={session.Pid} hwnd=0x{session.WindowHandle.ToInt64():X}; launcherPid={LauncherSession?.LauncherPid}; GameSession attached to game PID");
-            if (!await _native.AttachGameAsync(session.Pid, Path.GetFileName(session.ExecutablePath), cancellationToken))
-                throw new InvalidOperationException("O núcleo nativo não conseguiu conectar ao cliente.");
-
-            var executableName = Path.GetFileName(session.ExecutablePath);
-            if (_offsetStore.Get(executableName) is { } savedOffset && savedOffset != 0)
-            {
-                await _native.SetPositionOffsetAsync(savedOffset, cancellationToken);
-                Trace.WriteLine($"[Handoff] Reaplicando offset de posição salvo {savedOffset:X} para {executableName}");
-            }
-
-            installation.LastGameExecutable = session.ExecutablePath;
-            if (!installation.GameExecutableNames.Contains(executableName, StringComparer.OrdinalIgnoreCase))
-                installation.GameExecutableNames.Add(executableName);
-            _library.Save(installation);
-            SetState(KBotLifecycleState.ClientConnected, "Cliente conectado. Aguardando personagem...");
-
             while (!cancellationToken.IsCancellationRequested)
             {
-                UpdateLauncherHandoff(session);
-                if (!session.IsAlive)
+                if (session is not null)
                 {
-                    CharacterSession = new CharacterSession(session.Pid, CharacterPresence.Disconnected, DateTime.Now);
+                    if (!_disposed) await _native.DetachGameAsync(CancellationToken.None);
+                    session.Dispose();
+                    Bot?.Dispose();
+                    Bot = null;
+                    _characterDetector.Reset();
+                    _loggedReaderStatus = null;
+                    _launcherWasRunning = null;
+                    CharacterSession = null;
                     LastDetection = null;
-                    LastNativeStatus = null;
-                    SetState(KBotLifecycleState.Disconnected, "PokeAlliance foi fechado.");
-                    return;
                 }
-                var nativeStatus = await _native.GetStatusAsync(cancellationToken);
-                LastNativeStatus = nativeStatus;
-                var detection = _characterDetector.Detect(session, nativeStatus);
-                var readerLog = $"{detection.ReaderStatus}: {detection.ReaderMessage}";
-                if (_loggedReaderStatus != readerLog)
-                {
-                    _loggedReaderStatus = readerLog;
-                    Trace.WriteLine($"[ClientReader] pid={session.Pid}; {readerLog}");
-                }
-                LastDetection = detection;
-                var presence = detection.State;
-                var oldPresence = CharacterSession?.State;
-                CharacterSession = new CharacterSession(session.Pid, presence, DateTime.Now,
-                    detection.Confidence, detection.Source,
-                    detection.DetectionStatus, detection.LastConfirmedInGame);
-                if (oldPresence != presence)
-                    Trace.WriteLine($"[CharacterDetector] {oldPresence} -> {presence}; source={detection.Source}; confidence={detection.Confidence:P0}; reader={detection.ReaderStatus}; vision={detection.VisionSignals}/{detection.VisionSignalTotal}");
-                var (state, message) = presence switch
-                {
-                    CharacterPresence.LoginScreen => (KBotLifecycleState.WaitingForLogin, "Aguardando login no PokeAlliance..."),
-                    CharacterPresence.CharacterSelection => (KBotLifecycleState.WaitingForCharacter, "Aguardando seleção de personagem..."),
-                    CharacterPresence.Loading => (KBotLifecycleState.WaitingForCharacter, "Carregando personagem..."),
-                    CharacterPresence.InGame => (KBotLifecycleState.Ready, "Personagem detectado. Iniciando KBot..."),
-                    _ => (KBotLifecycleState.WaitingForCharacter,
-                        "Cliente conectado. Aguardando personagem...")
-                };
-                if (detection.DetectionStatus == CharacterDetectionStatus.CaptureUnavailable &&
-                    presence != CharacterPresence.InGame)
-                    message = "Cliente conectado. Captura indisponível; aguardando janela...";
-            var stateChanged = state != State || message != Message;
-            SetState(state, message);
-            if (!stateChanged) Changed?.Invoke(this);
+                session = null;
+                GameSession = null;
+                LauncherSession = null;
+                _badCoreTicks = 0;
+                _clientAttached = false;
 
-            TickBrain(session);
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                var launcher = _launcher.FindRunning(installation);
+                var found = _watcher.FindRunning(installation, launcher);
+                if (!found.HasValue)
+                {
+                    var reconnecting = !firstPass;
+                    if (launcher is null && !reconnecting)
+                    {
+                        SetState(KBotLifecycleState.LaunchingClient, "Iniciando PokeAlliance...");
+                        launcher = _launcher.Launch(installation);
+                    }
+                    LauncherSession = launcher;
+                    HandoffStatus = launcher is null
+                        ? (reconnecting ? "Cliente fechado. Aguardando você reabrir o PokeAlliance..." : "Cliente não aberto. Aguardando você iniciar o PokeAlliance...")
+                        : $"Launcher PID {launcher.LauncherPid}; aguardando cliente real.";
+                    Trace.WriteLine($"[Handoff] Waiting for game process (launcherPid={launcher?.LauncherPid ?? 0}); reconnect={reconnecting}");
+                    SetState(KBotLifecycleState.WaitingForProcess, launcher is null
+                        ? "Aguardando o PokeAlliance abrir..."
+                        : "Launcher aberto. Aguardando o jogo...");
+                    if (reconnecting)
+                    {
+                        while (!cancellationToken.IsCancellationRequested && !found.HasValue)
+                        {
+                            found = _watcher.FindRunning(installation, launcher);
+                            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        found = await _watcher.WaitForGameAsync(installation, launcher!, cancellationToken);
+                    }
+                }
+                else LauncherSession = launcher;
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!found.HasValue) continue;
+                var resolvedGame = found.Value;
+                if (string.Equals(resolvedGame.Path, installation.LauncherPath, StringComparison.OrdinalIgnoreCase))
+                    LauncherSession = null; // The selected executable is the game itself.
+                firstPass = false;
+                SetState(KBotLifecycleState.ProcessDetected, "Cliente encontrado. Validando conexão...");
+                SetState(KBotLifecycleState.WaitingForWindow, "Validando janela do cliente...");
+                session = new GameSession(resolvedGame.Process, resolvedGame.Handle, resolvedGame.Path);
+                GameSession = session;
+                HandoffStatus = LauncherSession is null
+                    ? $"Cliente direto: GameSession PID {session.Pid}."
+                    : $"Launcher PID {LauncherSession.LauncherPid} → Game PID {session.Pid}.";
+                Trace.WriteLine($"[Handoff] Game process detected pid={session.Pid} hwnd=0x{session.WindowHandle.ToInt64():X}; launcherPid={LauncherSession?.LauncherPid}; GameSession attached to game PID");
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    if (!_clientAttached &&
+                        await _native.AttachGameAsync(session.Pid, Path.GetFileName(session.ExecutablePath), cancellationToken))
+                    {
+                        _clientAttached = true;
+                        Trace.WriteLine($"[ClientReader] ATTACHED ok para pid={session.Pid}");
+                    }
+                    if (_clientAttached || !session.IsAlive) break;
+                    Trace.WriteLine($"[ClientReader] Attach pendente; tentando novamente em 3s (pid={session.Pid})");
+                    var coreAlive = await _native.PingAsync();
+                    SetState(KBotLifecycleState.WaitingForWindow, coreAlive
+                        ? "Conectando ao núcleo do cliente..."
+                        : "Núcleo nativo sem resposta (KBot.Native.exe). Verifique se foi compilado...");
+                    await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+                    _native.StartCore();
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_clientAttached)
+                {
+                    SetState(KBotLifecycleState.Disconnected, "Cliente aberto, mas o núcleo ainda não conectou. O KBot vai continuar tentando...");
+                    Trace.WriteLine($"[ClientReader] Attach ainda não pronto para pid={session.Pid}; mantendo ciclo de reconexão");
+                    continue;
+                }
+                await ReapplySavedOffsetAsync(session, cancellationToken);
+
+                installation.LastGameExecutable = session.ExecutablePath;
+                var executableName = Path.GetFileName(session.ExecutablePath);
+                if (!installation.GameExecutableNames.Contains(executableName, StringComparer.OrdinalIgnoreCase))
+                    installation.GameExecutableNames.Add(executableName);
+                _library.Save(installation);
+                SetState(KBotLifecycleState.ClientConnected, "Cliente conectado. Aguardando personagem...");
+
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    UpdateLauncherHandoff(session);
+                    if (!session.IsAlive)
+                    {
+                        CharacterSession = new CharacterSession(session.Pid, CharacterPresence.Disconnected, DateTime.Now);
+                        LastDetection = null;
+                        LastNativeStatus = null;
+                        SetState(KBotLifecycleState.Disconnected, "PokeAlliance foi fechado. Aguardando reabertura...");
+                        Trace.WriteLine($"[Handoff] Game process closed pid={session.Pid}; entering reconnect poll");
+                        break;
+                    }
+                    var nativeStatus = await _native.GetStatusAsync(cancellationToken);
+                    LastNativeStatus = nativeStatus;
+                    if (nativeStatus is null)
+                    {
+                        _badCoreTicks++;
+                        if (_badCoreTicks >= 3)
+                        {
+                            Trace.WriteLine("[ClientReader] Núcleo nativo sem resposta há 3 ticks; recriando núcleo");
+                            _badCoreTicks = 0;
+                            _native.StartCore();
+                            if (await _native.PingAsync())
+                            {
+                                Trace.WriteLine("[ClientReader] Núcleo reviveu; anexando memória de novo");
+                                var name = Path.GetFileName(session.ExecutablePath);
+                                if (await _native.AttachGameAsync(session.Pid, name, cancellationToken))
+                                    await ReapplySavedOffsetAsync(session, cancellationToken);
+                                SetState(KBotLifecycleState.ClientConnected, "Núcleo reconectado. Verificando cliente...");
+                            }
+                        }
+                    }
+                    else _badCoreTicks = 0;
+                    var detection = _characterDetector.Detect(session, nativeStatus);
+                    var readerLog = $"{detection.ReaderStatus}: {detection.ReaderMessage}";
+                    if (_loggedReaderStatus != readerLog)
+                    {
+                        _loggedReaderStatus = readerLog;
+                        Trace.WriteLine($"[ClientReader] pid={session.Pid}; {readerLog}");
+                    }
+                    LastDetection = detection;
+                    var presence = detection.State;
+                    var oldPresence = CharacterSession?.State;
+                    CharacterSession = new CharacterSession(session.Pid, presence, DateTime.Now,
+                        detection.Confidence, detection.Source,
+                        detection.DetectionStatus, detection.LastConfirmedInGame);
+                    if (oldPresence != presence)
+                        Trace.WriteLine($"[CharacterDetector] {oldPresence} -> {presence}; source={detection.Source}; confidence={detection.Confidence:P0}; reader={detection.ReaderStatus}; vision={detection.VisionSignals}/{detection.VisionSignalTotal}");
+                    var (state, message) = presence switch
+                    {
+                        CharacterPresence.LoginScreen => (KBotLifecycleState.WaitingForLogin, "Aguardando login no PokeAlliance..."),
+                        CharacterPresence.CharacterSelection => (KBotLifecycleState.WaitingForCharacter, "Aguardando seleção de personagem..."),
+                        CharacterPresence.Loading => (KBotLifecycleState.WaitingForCharacter, "Carregando personagem..."),
+                        CharacterPresence.InGame => (KBotLifecycleState.Ready, "Personagem detectado. Iniciando KBot..."),
+                        _ => (KBotLifecycleState.WaitingForCharacter,
+                            "Cliente conectado. Aguardando personagem...")
+                    };
+                    if (detection.DetectionStatus == CharacterDetectionStatus.CaptureUnavailable &&
+                        presence != CharacterPresence.InGame)
+                        message = "Cliente conectado. Captura indisponível; aguardando janela...";
+                    var stateChanged = state != State || message != Message;
+                    SetState(state, message);
+                    if (!stateChanged) Changed?.Invoke(this);
+
+                    TickBrain(session);
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -188,7 +273,19 @@ public sealed class KBotLifecycle : IDisposable
                 if (!_disposed) await _native.DetachGameAsync(CancellationToken.None);
                 session.Dispose();
                 GameSession = null;
+                Bot?.Dispose();
+                Bot = null;
             }
+        }
+    }
+
+    private async Task ReapplySavedOffsetAsync(GameSession session, CancellationToken cancellationToken)
+    {
+        var executableName = Path.GetFileName(session.ExecutablePath);
+        if (_offsetStore.Get(executableName) is { } savedOffset && savedOffset != 0)
+        {
+            await _native.SetPositionOffsetAsync(savedOffset, cancellationToken);
+            Trace.WriteLine($"[Handoff] Reaplicando offset de posição salvo {savedOffset:X} para {executableName}");
         }
     }
 
@@ -205,7 +302,12 @@ public sealed class KBotLifecycle : IDisposable
         {
             _profile = BotProfileService.Load();
             Bot = BotBrainFactory.Build(_native, session.WindowHandle, _profile,
-                () => GameStateProvider.From(LastNativeStatus, CharacterSession?.State ?? CharacterPresence.Unknown, Environment.TickCount64));
+                () =>
+                {
+                    var presence = CharacterSession?.State ?? CharacterPresence.Unknown;
+                    var scan = _screenScanSource.GetScan(LastNativeStatus, presence);
+                    return GameStateProvider.From(LastNativeStatus, presence, Environment.TickCount64, scan);
+                });
             AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Automation", "brain_started",
                 "Motor de automação iniciado para o personagem detectado.", session.Pid.ToString());
         }

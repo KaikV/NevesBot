@@ -29,3 +29,13 @@ O agregador confirma entrada após três leituras consecutivas. A saída de `InG
 ## Estado de validação
 
 Foram analisados três frames reais de personagem no mapa (`5/5`, `InGame`, 98%) e um frame real de seleção (`0/5` sinais de mapa; três sinais de seleção; `CharacterSelection`, 90%). Em uma execução com o cliente aberto no mapa, o ciclo de vida chegou a `Ready`/`InGame` usando Vision com quatro dos cinco sinais e 92% de confiança; a Pokébar havia sido movida para mais baixo. O teste também passou com o frame de mapa redimensionado para 60%, com entrada, saída e reentrada temporais. A tela de login ainda precisa de uma captura real para classificação específica; até lá ela permanece `Unknown` e não libera a Dashboard. `Loading` também permanece `Unknown` quando não há evidência visual específica. O fechamento do processo é identificado pelo `GameSession.IsAlive` e publicado como `Disconnected`.
+
+## Reconexão e retry (2026-09-21)
+
+O ciclo de vida em `KBotLifecycle.RunAsync` agora é um loop externo de reconexão: quando o processo do cliente morre, o ciclo detacha, descarta a sessão (inclusive o `Bot`, que seguraria um HWND morto), volta ao estado `Disconnected` e fica aguardando o jogo reabrir a cada 1 s — **sem** relançar o launcher sozinho (auto-launch acontece apenas na primeira passagem). Assim o bot segue reconhecendo o client sem que o usuário precise reiniciá-lo.
+
+Outras correções da mesma rodada:
+
+- **Attach sem throw**: antes, uma única falha de `AttachGameAsync` lançava `InvalidOperationException` e deixava o app em `Error` para sempre. Agora o ciclo tenta o attach repetidamente a cada 3 s (recriando o núcleo entre tentativas) e mostra "Núcleo nativo sem resposta" na UI quando o pipe não responde — útil quando `KBot.Native.exe` nunca foi compilado.
+- **Núcleo morto em runtime**: 3 ticks consecutivos de `GET_STATUS` nulos recriam o núcleo, fazem `PING` e, se voltar, refazem `ATTACH_PID` + reaplicam o offset de posição salvo (o núcleo novo perde os dois).
+- **Seleção de instalação**: além de nome/launcher "PokeAlliance", a fallback agora aceita a instalação mais recentemente usada (`GameLibrary.Load()` já ordena por `LastUsedAt`), então uma instalação renomeada continua sendo reconhecida.

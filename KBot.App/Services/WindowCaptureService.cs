@@ -11,6 +11,9 @@ namespace KBot.App.Services;
 public static class WindowCaptureService
 {
     private const uint PrintWindowClientOnly = 0x00000001;
+    // Requests the full DWM-rendered content (mandatory since Win8.1 for
+    // DirectComposition/DX windows).
+    private const uint PrintWindowRenderFullContent = 0x00000002;
 
     public static bool IsWindow(nint handle) => handle != 0 && IsWindowNative(handle);
 
@@ -36,9 +39,17 @@ public static class WindowCaptureService
         var previous = SelectObject(memoryDc, bitmap);
         try
         {
-            if (!PrintWindow(handle, memoryDc, PrintWindowClientOnly) &&
-                !BitBlt(memoryDc, 0, 0, width, height, windowDc, 0, 0, SourceCopy))
-                throw new InvalidOperationException("O cliente recusou a captura da janela.");
+            // 1) Ask DWM for the fully composited content (works for DX9/DX11
+            //    windows since Win8.1).
+            PrintWindow(handle, memoryDc, PrintWindowClientOnly | PrintWindowRenderFullContent);
+            // 2) Fallback: plain GDI print of the window's own DC.
+            if (IsBlank(memoryDc, width, height))
+                PrintWindow(handle, memoryDc, 0);
+            // 3) Last resort: BitBlt from the screen at the window's position
+            //    (required when the game is exclusive fullscreen and DWM has
+            //    no representation of the surface).
+            if (IsBlank(memoryDc, width, height))
+                TryBlitFromScreen(handle, memoryDc, width, height);
             var source = Imaging.CreateBitmapSourceFromHBitmap(bitmap, nint.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             source.Freeze();
             return source;
@@ -51,6 +62,74 @@ public static class WindowCaptureService
             ReleaseDC(handle, windowDc);
         }
     }
+
+    private static void TryBlitFromScreen(nint handle, nint destDc, int width, int height)
+    {
+        if (!GetWindowRect(handle, out var winRect)) return;
+        GetWindowRect(nint.Zero, out var desktop);
+        var sx = winRect.Left - desktop.Left;
+        var sy = winRect.Top - desktop.Top;
+        var hdcScreen = GetDC(nint.Zero);
+        if (hdcScreen == 0) return;
+        try
+        {
+            BitBlt(destDc, 0, 0, width, height, hdcScreen, sx, sy, SourceCopy);
+        }
+        finally
+        {
+            ReleaseDC(nint.Zero, hdcScreen);
+        }
+    }
+
+    private static bool IsBlank(nint dc, int width, int height)
+    {
+        var bytes = width * height * 4;
+        var buffer = new byte[bytes];
+        var info = new BitmapInfo
+        {
+            Header = new BitmapInfoHeader
+            {
+                Size = 40, // BITMAPINFOHEADER fixed size
+                Width = width,
+                Height = -height, // top-down
+                Planes = 1,
+                BitCount = 32,
+            }
+        };
+        var ok = GetDIBits(dc, nint.Zero, 0, (uint)height, buffer, ref info, DIB_RGB_COLORS);
+        if (!ok) return false; // unknown -> let caller keep result
+        for (var i = 0; i < buffer.Length; i += 4 * 7)
+        {
+            byte r = buffer[i]; byte g = buffer[i + 1]; byte b = buffer[i + 2];
+            if (Math.Abs(r - g) + Math.Abs(g - b) + Math.Abs(r - b) > 40 ||
+                (r > 60 && g > 60 && b > 60)) return false;
+        }
+        return true;
+    }
+
+    private const uint DIB_RGB_COLORS = 0;
+
+    [StructLayout(LayoutKind.Sequential)] private struct BitmapInfoHeader
+    {
+        public int Size;
+        public int Width;
+        public int Height;
+        public short Planes;
+        public short BitCount;
+        public int Compression;
+        public int ImageSize;
+        public int XResolution;
+        public int YResolution;
+        public int ColorsUsed;
+        public int ColorsImportant;
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct BitmapInfo
+    {
+        public BitmapInfoHeader Header;
+    }
+
+    [DllImport("gdi32.dll")] private static extern bool GetDIBits(nint dc, nint bitmap, uint start, uint count, byte[] buffer, ref BitmapInfo info, uint colorUse);
 
     public static nint FindWindowForProcess(int pid, nint preferred = 0)
     {

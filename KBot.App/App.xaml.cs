@@ -12,6 +12,7 @@ namespace KBot.App
         private BootstrapWindow? _bootstrap;
         private MainWindow? _fullWindow;
         private bool _closingForState;
+        private int _hiddenTicks;
 
         protected override async void OnStartup(StartupEventArgs e)
         {
@@ -33,6 +34,7 @@ namespace KBot.App
                 if (_bootstrap is null) return;
                 if (lifecycle.CanShowMainWindow)
                 {
+                    _hiddenTicks = 0;
                     if (_fullWindow is not null) return;
                     _fullWindow = new MainWindow(lifecycle);
                     var opened = _fullWindow;
@@ -47,6 +49,9 @@ namespace KBot.App
                 }
                 else
                 {
+                    // A single vision miss must not boot us out of the main window;
+                    // require 5 consecutive ticks (~5s) of non-InGame to go back.
+                    if (++_hiddenTicks < 5) return;
                     if (_fullWindow is not null)
                     {
                         _closingForState = true;

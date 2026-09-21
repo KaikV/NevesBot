@@ -35,11 +35,6 @@ public sealed class CavebotNavigator
 
     public async Task<bool> StartAsync(IReadOnlyList<CavebotWaypoint> route)
     {
-        if (route.Count == 0)
-        {
-            Status = "A rota está vazia; adicione pelo menos um waypoint.";
-            return false;
-        }
         Stop();
         _cancellation = new CancellationTokenSource();
         var token = _cancellation.Token;
@@ -78,30 +73,43 @@ public sealed class CavebotNavigator
     {
         try
         {
-            for (var index = 0; index < route.Count; index++)
+            if (route.Count == 0)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var waypoint = route[index];
-                CurrentWaypointNumber = waypoint.Number;
-                Status = $"Ponto {waypoint.Number}/{route.Count} ({waypoint.DisplayName}): caminhando até {waypoint.Position}.";
+                Status = "MODO LIVRE: andando para frente; PARAR para interromper.";
                 Raise();
-
-                var reached = await WalkToAsync(waypoint.X, waypoint.Y, cancellationToken);
-                if (!reached)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    Status = $"Ponto {waypoint.Number}/{route.Count}: não chegou ao alvo {waypoint.Position} (timeout/stall).";
+                    await _native.SendKeyAsync("W", cancellationToken);
+                    await Task.Delay(StepDelay, cancellationToken);
+                }
+            }
+            else
+            {
+                for (var index = 0; index < route.Count; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var waypoint = route[index];
+                    CurrentWaypointNumber = waypoint.Number;
+                    Status = $"Ponto {waypoint.Number}/{route.Count} ({waypoint.DisplayName}): caminhando até {waypoint.Position}.";
                     Raise();
-                    break;
+
+                    var reached = await WalkToAsync(waypoint.X, waypoint.Y, cancellationToken);
+                    if (!reached)
+                    {
+                        Status = $"Ponto {waypoint.Number}/{route.Count}: não chegou ao alvo {waypoint.Position} (timeout/stall).";
+                        Raise();
+                        break;
+                    }
+
+                    if (!await PerformActionAsync(waypoint.Action, cancellationToken)) break;
+                    WaypointsCompleted++;
+                    Status = $"Ponto {waypoint.Number}/{route.Count} concluído.";
+                    Raise();
                 }
 
-                if (!await PerformActionAsync(waypoint.Action, cancellationToken)) break;
-                WaypointsCompleted++;
-                Status = $"Ponto {waypoint.Number}/{route.Count} concluído.";
-                Raise();
+                if (!cancellationToken.IsCancellationRequested && WaypointsCompleted == route.Count)
+                    Status = $"Rota concluída: {route.Count} pontos. Personagem parado.";
             }
-
-            if (!cancellationToken.IsCancellationRequested && WaypointsCompleted == route.Count)
-                Status = $"Rota concluída: {route.Count} pontos. Personagem parado.";
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

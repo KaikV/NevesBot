@@ -77,7 +77,7 @@ public sealed class VisionInGameDetector
         var regions = Areas.Select((a, i) => new VisionRegion(a.Name, a.X, a.Y, a.W, a.H, signals[i])).ToArray();
         var count = signals.Count(value => value);
         var hudCount = new[] { pokebar, battle, pokemon, action }.Count(value => value);
-        var inGame = map && hudCount >= 2 && (pokebar || pokemon) && count >= 3;
+        var inGame = map && count >= 2 || (hudCount >= 2 && (pokebar || pokemon)) || (map && pokebar);
         var selectionButton = image.CountColorBars(SelectionButton, PixelImage.IsGreen, 1) > 0;
         var selectionCard = image.DarkFraction(SelectionCard) < .3 && image.EdgeFraction(SelectionCard) > .06;
         var selectionStats = image.DarkFraction(SelectionStats) > .3 && image.EdgeFraction(SelectionStats) > .07;

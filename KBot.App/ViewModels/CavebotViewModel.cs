@@ -45,7 +45,7 @@ public sealed class CavebotViewModel : ObservableObject
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
     public string RouteName { get => _routeName; private set => Set(ref _routeName, value); }
     public string NavigatorStatus => _navigator.Status;
-    public bool CanStartRoute => _navigator is { IsRunning: false } && HasWaypoints;
+    public bool CanStartRoute => _navigator is { IsRunning: false };
     public bool RouteRunning => _navigator.IsRunning;
 
     public string ScanX { get => _scanX; set { Set(ref _scanX, value); OnPropertyChanged(nameof(CanScan)); } }
@@ -115,8 +115,8 @@ public sealed class CavebotViewModel : ObservableObject
 
     private void StartRouteAsync()
     {
-        if (_navigator.IsRunning || !HasWaypoints) return;
-        Feedback = "Iniciando rota...";
+        if (_navigator.IsRunning) return;
+        Feedback = HasWaypoints ? "Iniciando rota..." : "Iniciando modo livre...";
         _ = _navigator.StartAsync(Waypoints.ToList());
     }
 

@@ -103,7 +103,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 | Modelos prontos | `n3_alarmes.lua` | Botão aplica regras comuns pré-montadas | ⬜ |
 | **Responder PM** | `nF9_responderpm.lua` | 1x por pessoa; normaliza texto (acentos/repetidos); regras por prioridade (pergunta > saudação); janela de coleta (2ª msg mescla, não estende prazo); delay 3-6s sorteado; frases editáveis; GM **não** responde | ✅ `PmResponderService` (falta gancho onTalk + transporte talkPrivate) |
 | **Saída educada** | `nE_saida.lua` | Ao deslogar: fala frase local humanizada, anda até o **ponto de deslog** (mesma mecânica do cavebot, com escada), aí desloga | ⬜ |
-| **Vigia / puxão** | `nF8_vigia.lua` | Detecção de **teleporte admin** (coordenadas mudam brusco) = o sinal mais honesto; para TUDO antes e toca alarme volume máximo | 🟧 detectável por saltos de posição (headless!) — bom próximo |
+| **Vigia / puxão** | `nF8_vigia.lua` | Detecção de **teleporte admin** (coordenadas mudam brusco) = o sinal mais honesto; para TUDO antes e toca alarme volume máximo | ✅ `VigiaTracker` puro (saltos, carimbo esperado/origem, 10s de graça, pontos ensinados) + `VigiaModule` prioridade 90; pendente: canal de fala de GM ("mensagem no mapa") e som/parada do jogo |
 
 ### Extras
 | Feature | Fonte | Como funciona | KBot |

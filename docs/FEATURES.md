@@ -13,6 +13,7 @@ tela no menu lateral. A tela **Configurações** reúne todas as opções e impo
 | Captura | Preferência e atalho | Decisão pronta (bola por corpo + shiny); pendente: leitura dos corpos na tela |
 | Coleta | Preferência e atalho | Pendente: reconhecimento dos objetos |
 | Anti AFK | Ativar e segundos parado até o passo | Decisão pronta (passo ao lado + volta agendada, alterna o lado); pendente: leitura de andar dos tiles ao lado |
+| Se me puxarem | Ativar e salto que conta em tiles | Alarme quando um salto de posição não foi pedido pelo bot (voos/hunts/morte/carimbo próprio se isentam; jogador pode ensinar pontos); nascido ligado; pendente: som exclusivo e canal de fala de GM |
 
 As opções são salvas em `%LOCALAPPDATA%\KBot\profile.json`. Salvar uma preferência não inicia
 automação. O núcleo C++ detecta o processo `PokeAlliance.exe` e responde a `PING` e `GET_STATUS`.

@@ -61,6 +61,8 @@ public sealed class SettingsViewModel : ObservableObject
     private string _lootHotkey = string.Empty;
     private bool _antiAfkEnabled;
     private string _antiAfkIdleSeconds = "50";
+    private bool _vigiaEnabled = true;
+    private string _vigiaDistThreshold = "3";
     private bool _pmReplyEnabled;
     private string _pmPhrases = string.Empty;
     private readonly NativeService _nativeService = new();
@@ -108,6 +110,8 @@ public sealed class SettingsViewModel : ObservableObject
     public string LootHotkey { get => _lootHotkey; set => Set(ref _lootHotkey, value); }
     public bool AntiAfkEnabled { get => _antiAfkEnabled; set => Set(ref _antiAfkEnabled, value); }
     public string AntiAfkIdleSeconds { get => _antiAfkIdleSeconds; set => Set(ref _antiAfkIdleSeconds, value); }
+    public bool VigiaEnabled { get => _vigiaEnabled; set => Set(ref _vigiaEnabled, value); }
+    public string VigiaDistThreshold { get => _vigiaDistThreshold; set => Set(ref _vigiaDistThreshold, value); }
     public bool PmReplyEnabled { get => _pmReplyEnabled; set => Set(ref _pmReplyEnabled, value); }
     public string PmPhrases { get => _pmPhrases; set => Set(ref _pmPhrases, value); }
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
@@ -211,6 +215,11 @@ public sealed class SettingsViewModel : ObservableObject
             Feedback = "O tempo de inatividade do anti-AFK deve ser um número inteiro de segundos maior ou igual a 15.";
             return null;
         }
+        if (!int.TryParse(VigiaDistThreshold, out var vigiaDistThreshold) || vigiaDistThreshold < 2)
+        {
+            Feedback = "O salto que conta como puxão deve ser um número inteiro de tiles maior ou igual a 2.";
+            return null;
+        }
         if (CureAtPercent < 0 || CureAtPercent > 100)
         {
             Feedback = "O limite de cura deve estar entre 0 e 100.";
@@ -271,6 +280,8 @@ public sealed class SettingsViewModel : ObservableObject
             LootHotkey = LootHotkey,
             AntiAfkEnabled = AntiAfkEnabled,
             AntiAfkIdleSeconds = antiAfkIdleSeconds,
+            VigiaEnabled = VigiaEnabled,
+            VigiaDistThreshold = vigiaDistThreshold,
             PmReplyEnabled = PmReplyEnabled,
             PmPhrases = PmPhrases,
             Spells = spells
@@ -416,6 +427,8 @@ public sealed class SettingsViewModel : ObservableObject
         LootHotkey = profile.LootHotkey;
         AntiAfkEnabled = profile.AntiAfkEnabled;
         AntiAfkIdleSeconds = profile.AntiAfkIdleSeconds.ToString();
+        VigiaEnabled = profile.VigiaEnabled;
+        VigiaDistThreshold = profile.VigiaDistThreshold.ToString();
         PmReplyEnabled = profile.PmReplyEnabled;
         PmPhrases = profile.PmPhrases;
     }

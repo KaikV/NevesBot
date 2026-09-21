@@ -186,6 +186,63 @@ public sealed class FishingModule : IBotModule
     }
 }
 
+// Port of nF8_vigia.lua ("O PUXAO"). Highest feature priority: this alarm must
+// STOP everything before anything else acts - the character is dragged by a GM
+// and the first thing that still matters is that it stops doing its own thing.
+// The jump math, the "expected teleport" stamps, the 10s settle and the taught
+// points live in VigiaTracker (VigiaDetect.cs). We feed it via scan only (one
+// ~1s position read per tick): walking between two photos can look like a few
+// tiles, so the tracker's walk-speed cap is what keeps honest steps quiet. A
+// short pull smaller than one tick's walk budget can be swallowed - documented
+// degradation until a per-step position event exists.
+public sealed class VigiaModule : IBotModule
+{
+    public string Name => "Vigia";
+    public int Priority => 90;
+
+    private static readonly string[] MorteFrases =
+        { "you are dead", "you have died", "voce morreu", "you're dead" };
+
+    private readonly VigiaTracker _tracker = new();
+
+    public string Status { get; private set; } = "";
+
+    public ActionIntent? Decide(GameState s, IProfileView p)
+    {
+        if (!p.VigiaEnabled || !s.InGame)
+        {
+            _tracker.Offline(s.NowMs);
+            return null;
+        }
+
+        _tracker.DistThreshold = p.VigiaDistThreshold;
+
+        // Death stamps itself through the server chat phrase: between the line
+        // and the temple teleport there is the "voce morreu" window, so it gets
+        // a wide 30s stamp (sofaVG.esperado(30000, "morte")).
+        if (s.LatestChat is { } chat)
+        {
+            var low = chat.Text.ToLowerInvariant();
+            foreach (var f in MorteFrases)
+                if (low.Contains(f)) { _tracker.Esperado(s.NowMs, 30_000, "morte"); break; }
+        }
+
+        bool? dead = s.ActiveAlive ?? null;
+        var pull = s.HasPosition
+            ? _tracker.Mede(s.NowMs, new PokePos(s.X, s.Y, s.Z), viaScan: true, dead: dead == false)
+            : null;
+
+        if (pull != null)
+        {
+            Status = pull.Describe();
+            return ActionIntent.Command("alert:puxao:" + pull.Describe());
+        }
+
+        Status = _tracker.Alarmed ? "alarme ativo - aguarde o silencio" : (_tracker.LastReason ?? "");
+        return null;
+    }
+}
+
 // Port of nL_antiafk.lua. Lowest priority: a single sideways step when the
 // character stands on one tile for too long, followed by the scheduled step back.
 // The idle clock, volta scheduling, side alternation and both-sides-blocked retry

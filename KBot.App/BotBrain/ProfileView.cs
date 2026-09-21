@@ -48,6 +48,8 @@ public sealed class ProfileView : IProfileView
     public string? LootHotkey => _p.LootHotkey;
     public bool AntiAfkEnabled => _p.AntiAfkEnabled;
     public int AntiAfkIdleSeconds => _p.AntiAfkIdleSeconds;
+    public bool VigiaEnabled => _p.VigiaEnabled;
+    public int VigiaDistThreshold => _p.VigiaDistThreshold;
     public IReadOnlyList<SpellSettingView> Spells =>
         _p.Spells.Where(s => !string.IsNullOrWhiteSpace(s.Key))
                  .Select(s => new SpellSettingView(s.Key, s.Enabled, s.CooldownSeconds)).ToList();

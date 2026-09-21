@@ -65,6 +65,11 @@ public sealed class BotProfile
     public bool AntiAfkEnabled { get; set; }
     // Seconds standing on one tile before the nudge (clamped to >= 15 in Normalize).
     public int AntiAfkIdleSeconds { get; set; } = 50;
+    // Vigia / puxao (nF8_vigia.lua): alarm when a GM drags the character. ON by default -
+    // "alarme mudo e o pior defeito que um alarme pode ter" (nascido ligado no Lua).
+    public bool VigiaEnabled { get; set; } = true;
+    // Tiles of jump that count as a pull (clamped to >= 2 in Normalize). Default 3.
+    public int VigiaDistThreshold { get; set; } = 3;
     public bool PmReplyEnabled { get; set; }
     public string PmPhrases { get; set; } = string.Empty; // CSV of vague replies (see PmResponderService.DefaultPhrases)
     public List<SpellSetting> Spells { get; set; } = new();

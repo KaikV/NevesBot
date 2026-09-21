@@ -319,6 +319,7 @@ RunCatchChecks();
 RunAlertChecks();
 RunFishingChecks();
 RunAntiafkChecks();
+RunVigiaChecks();
 
 static void RunSocorroChecks()
 {
@@ -1059,6 +1060,215 @@ static void RunAntiafkChecks()
         Check(mod.Decide(sb, on) is null, "Module: battle holds the nudge");
         var snp = s with { HasPosition = false };
         Check(mod.Decide(snp, on) is null, "Module: no position read: silent");
+    }
+}
+
+static void RunVigiaChecks()
+{
+    const long T0 = 1_000_000;           // entry time; the 10s settle runs until T0+10_000
+    const long S = T0 + 11_000;          // "settled": any later jump is judged on its own merits
+    static PokePos P(int x, int y, int z = 5) => new(x, y, z);
+
+    // A) Steps never count: 1 tile, or 1 tile + 1 floor (stair/pit), any amount.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), viaScan: false, dead: false);       // first photo arms
+        t.Mede(S, P(10, 10), false, false);                       // sit through the settle
+        t.Mede(S + 90, P(11, 10), false, false);
+        t.Mede(S + 180, P(12, 10, 6), false, false);               // stair
+        t.Mede(S + 270, P(13, 10, 5), false, false);               // back down
+        Check(t.Alarmed == false, "Steps/stairs/pits never alarm");
+    }
+
+    // B) A 3-tile jump alarms once and latches; describe carries de/para/tiles.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.Mede(S, P(10, 10), false, false);
+        var p = t.Mede(S + 200, P(13, 10), false, false);
+        Check(p != null && p.Dist == 3, "3-tile jump: alarmed");
+        Check(t.Alarmed, "Alarm latched");
+        Check(p!.Describe().StartsWith("PUXARAM VOCE: de 10,10,5 para 13,10,5 (3 tiles)"), $"Describe format: {p.Describe()}");
+        Check(t.Mede(S + 300, P(20, 20), false, false) is null, "Latched: a bigger jump while ringing is silent");
+        t.Silenciar();
+        Check(!t.Alarmed, "Silenciar releases the latch");
+    }
+
+    // C) Floor rules: dz>=2 always counts; dz==1 needs dist>=3.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.Mede(S, P(10, 10), false, false);
+        Check(t.Mede(S + 100, P(12, 10, 7), false, false) != null, "2 floors away: alarmed at any distance");
+    }
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.Mede(S, P(10, 10), false, false);
+        Check(t.Mede(S + 100, P(12, 10, 6), false, false) is null, "1 floor + 2 tiles: not a salto");
+        var t2 = new VigiaTracker();
+        t2.Mede(T0, P(10, 10), false, false);
+        t2.Mede(S, P(10, 10), false, false);
+        Check(t2.Mede(S + 100, P(13, 10, 6), false, false) != null, "1 floor + 3 tiles: alarmed");
+    }
+
+    // D) Below the threshold on the same floor: not a salto at all.
+    {
+        var t = new VigiaTracker();  // threshold 3
+        t.Mede(T0, P(10, 10), false, false);
+        t.Mede(S, P(10, 10), false, false);
+        Check(t.Mede(S + 100, P(12, 10), false, false) is null, "2 tiles same floor: below threshold 3");
+        var t5 = new VigiaTracker { DistThreshold = 5 };
+        t5.Mede(T0, P(10, 10), false, false);
+        t5.Mede(S, P(10, 10), false, false);
+        Check(t5.Mede(S + 100, P(13, 10), false, false) is null, "Threshold 5: 3 tiles ignored");
+        Check(t5.Mede(S + 200, P(18, 10), false, false) != null, "Threshold 5: 5 tiles alarmed");
+    }
+
+    // E) Scan path: two photos, so walking may span tiles. Cap = min(8, elapsed/90+1).
+    {
+        // 3 tiles in 200ms: could you have walked it? 200/90+1 = 3 -> yes, swallow.
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), true, false);
+        t.Mede(S, P(10, 10), true, false);
+        Check(t.Mede(S + 200, P(13, 10), true, false) is null, "Scan 3 tiles @ 200ms: walked, silent");
+        // 3 tiles in 90ms: 90/90+1 = 2 -> no, alarmed.
+        var t2 = new VigiaTracker();
+        t2.Mede(T0, P(10, 10), true, false);
+        t2.Mede(S, P(10, 10), true, false);
+        Check(t2.Mede(S + 90, P(13, 10), true, false) != null, "Scan 3 tiles @ 90ms: too fast to walk, alarmed");
+        // 5 tiles in 20s: walkable budget capped at 8 -> swallowed (the client stalled).
+        var t3 = new VigiaTracker();
+        t3.Mede(T0, P(10, 10), true, false);
+        t3.Mede(S, P(10, 10), true, false);
+        Check(t3.Mede(S + 20_000, P(15, 10), true, false) is null, "Scan 5 tiles over 20s: within the 8-tile cap");
+        // 100 tiles in 10s: above the cap no matter the time -> alarmed (the old bug).
+        var t4 = new VigiaTracker();
+        t4.Mede(T0, P(10, 10), true, false);
+        t4.Mede(S, P(10, 10), true, false);
+        Check(t4.Mede(S + 10_000, P(110, 10), true, false) != null, "Scan 100 tiles: cap forces the alarm");
+    }
+
+    // F) First 10s after (re)entering the game never count (the login drop).
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);            // enter at T0
+        Check(t.Mede(T0 + 9_000, P(90, 90), false, false) is null, "Jump inside the 10s settle: silent");
+        // After settle the character sits wherever the entry dropped him.
+        Check(t.Mede(T0 + 30_000, P(95, 90), false, false) != null, "Same jump outside the settle: alarmed");
+    }
+
+    // G) Esperado stamp: short "that teleport was me", extends never shrinks.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.Esperado(S, 8_000, "voar");
+        Check(t.Mede(S + 5_000, P(60, 10), false, false) is null, "Stamp covers the bot's own flight");
+        Check(t.Mede(S + 30_000, P(63, 10), false, false) != null, "After the stamp expires: alarmed again");
+    }
+
+    // H) EsperadoDe (the Auto Hunt door): excuses ONLY a jump leaving near the
+    //    stamped tile, and it vale UMA vez.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.EsperadoDe(T0, 10, 10, 5, 60_000, "auto hunt", raio: 3);
+        Check(t.Mede(S, P(80, 80), false, false) is null, "Late hunt teleport from the door: silenced + consumed");
+        Check(t.Mede(S + 10_000, P(84, 80), false, false) != null, "Stamp consumed: next jump alarms");
+    }
+    {
+        // Walked 4 tiles away from the door before being pulled: raio 3 no longer covers.
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.EsperadoDe(T0, 10, 10, 5, 60_000, "auto hunt", raio: 3);
+        for (int i = 1; i <= 4; i++) t.Mede(T0 + 1_000 + i * 90, P(10 + i, 10), false, false);
+        Check(t.Mede(S, P(40, 10), false, false) != null, "Door stamp does not excuse a pull from 4 tiles away");
+    }
+
+    // I) Dead: the temple return is the game's, not a GM's.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        Check(t.Mede(S, P(50, 50, 9), false, dead: true) is null, "Temple return while dead: silent");
+    }
+
+    // J) Taught points: the window button teaches BOTH ends of that alarm in one
+    //    click - the route pad by ORIGIN, the hunt exit by DESTINATION.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        Check(t.Mede(S, P(30, 10), false, false) != null, "Route teleport nags the first time");
+        t.EnsinarPontos(10, 10, 5);      // "e teleporte normal" on (10,10,5)->(30,10,5)
+        t.Silenciar();
+        Check(t.Mede(S + 1_000, P(30, 10), false, false) is null, "Taught ORIGEM (route pad): silent");
+        Check(t.Mede(S + 2_000, P(10, 10), false, false) is null, "Taught DESTINO (hunt exit): silent");
+        Check(t.Mede(S + 3_000, P(11, 10), false, false) is null, "Step to re-anchor");
+        Check(t.Mede(S + 4_000, P(40, 10), false, false) != null, "Untaught origin still alarms");
+        t.Silenciar();
+        t.Mede(S + 5_000, P(41, 10), false, false);       // re-anchor
+        // The taught set covers (10,10)/(30,10) - another jump must still alarm.
+        Check(t.Mede(S + 6_000, P(70, 20), false, false) != null, "Taught points don't blanket-mute the tracker");
+    }
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.EnsinarDe(10, 10, 5);
+        t.EsquecerPontos();
+        Check(t.Mede(S, P(30, 10), false, false) != null, "EsquecerPontos: everything alarms again");
+    }
+
+    // K) Threshold floor: 1 means 2 (a 1-tile move is a step, never a pull).
+    {
+        var t = new VigiaTracker { DistThreshold = 1 };
+        t.Mede(T0, P(10, 10), false, false);
+        Check(t.Mede(S, P(12, 10), false, false) != null, "DistThreshold 1 clamps to 2: 2 tiles alarms");
+    }
+
+    // L) Offline resets everything: position memory, latch and the 10s settle.
+    {
+        var t = new VigiaTracker();
+        t.Mede(T0, P(10, 10), false, false);
+        t.Mede(T0 + 11_000, P(40, 10), false, false);        // alarm
+        t.Offline(T0 + 12_000);
+        Check(!t.Alarmed, "Offline dies the ringing alarm");
+        t.Mede(T0 + 12_500, P(41, 10), false, false);        // first photo back
+        Check(t.Mede(T0 + 13_500, P(80, 10), false, false) is null, "Fresh 10s settle after reconnect");
+    }
+
+    // M) Module wiring: gate + the alert payload.
+    {
+        var mod = new VigiaModule();
+        var on = new ProfileView(new BotProfile());                          // VigiaEnabled=true by default
+        var offp = new ProfileView(new BotProfile { VigiaEnabled = false });
+        var s0 = new GameState { ClientConnected = true, InGame = true, HasPosition = true, X = 10, Y = 10, Z = 5, NowMs = T0 };
+        Check(mod.Decide(s0, offp) is null, "Module: disabled profile stays silent");
+
+        var sn = s0 with { InGame = false };
+        Check(mod.Decide(sn, on) is null, "Module: out of game: silent");
+
+        // First tick arms; a GM-style 5-tile pull two floors up alarms.
+        Check(mod.Decide(s0, on) is null, "Module: first tick arms silently");
+        var pull = mod.Decide(s0 with { X = 15, Z = 7, NowMs = T0 + 20_000 }, on);
+        Check(pull != null && pull.Channel == ActionChannel.Command && (pull.Payload ?? "").StartsWith("alert:puxao:"),
+            $"Module: emits alert:puxao ({pull})");
+        Check((pull?.Payload ?? "").Contains("O bot foi PARADO."), "Module: payload says the bot was stopped");
+    }
+
+    // N) Module: the death chat phrase stamps a 30s window over the temple return.
+    {
+        var mod = new VigiaModule();
+        var on = new ProfileView(new BotProfile());
+        var s0 = new GameState { ClientConnected = true, InGame = true, HasPosition = true, X = 10, Y = 10, Z = 5, NowMs = T0 };
+        mod.Decide(s0, on);                                             // arm
+        var died = s0 with
+        {
+            NowMs = T0 + 20_000,
+            LatestChat = new ChatLine("text", "", 0, "You are dead", T0 + 20_000),
+            ActiveAlive = false
+        };
+        Check(mod.Decide(died, on) is null, "Module: death line: no pull yet");
+        var temple = died with { X = 60, Y = 60, Z = 9, NowMs = T0 + 25_000 };
+        Check(mod.Decide(temple, on) is null, "Module: temple return inside the death stamp: silent");
     }
 }
 

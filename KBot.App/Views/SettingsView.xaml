@@ -226,6 +226,16 @@
                     <TextBox Text="{Binding AntiAfkIdleSeconds, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
                 </StackPanel>
             </controls:CardControl>
+            <controls:CardControl x:Name="VigiaCard" Title="SE ME PUXAREM (VIGIA)" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Ser teleportado sem o bot pedir é a prova mais direta de que um administrador mexeu no personagem. Quando acontece, o bot congela e alarma até você mandar parar. Nasce ligado."
+                                 Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Alarmar se me puxarem" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding VigiaEnabled}"
+                               Margin="0,0,0,12" />
+                    <TextBlock Text="SALTO QUE CONTA COMO PUXAO (TILES)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding VigiaDistThreshold, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+            </controls:CardControl>
             <controls:CardControl x:Name="DiagnoseCard" Title="DIAGNÓSTICO" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Conferência do que falta para cada recurso funcionar. Não muda comportamento, só mostra."

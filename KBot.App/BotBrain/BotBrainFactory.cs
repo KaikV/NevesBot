@@ -17,6 +17,7 @@ public static class BotBrainFactory
 
         var brain = new BotBrain(sink, stateProvider, view);
         brain.Register(
+            new VigiaModule(),
             new HealingModule(),
             new SocorroModule(),
             new TargetingModule(),

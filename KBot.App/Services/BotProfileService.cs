@@ -123,6 +123,8 @@ public static class BotProfileService
         // 15 = AntiAfkTracker.IdleMinSeconds (kept as a literal: the Models->BotBrain
         // reference direction is not allowed here).
         profile.AntiAfkIdleSeconds = Math.Max(15, profile.AntiAfkIdleSeconds);
+        // 2 = the floor VigiaTracker applies (a 1-tile jump is a step, never a pull).
+        profile.VigiaDistThreshold = Math.Max(2, profile.VigiaDistThreshold);
         return profile;
     }
 

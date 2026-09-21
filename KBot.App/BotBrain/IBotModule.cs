@@ -57,6 +57,8 @@ public interface IProfileView
     string? LootHotkey { get; }
     bool AntiAfkEnabled { get; }
     int AntiAfkIdleSeconds { get; }
+    bool VigiaEnabled { get; }
+    int VigiaDistThreshold { get; }
     IReadOnlyList<SpellSettingView> Spells { get; }
 }
 

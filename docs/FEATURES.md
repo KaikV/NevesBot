@@ -14,6 +14,7 @@ tela no menu lateral. A tela **Configurações** reúne todas as opções e impo
 | Coleta | Preferência e atalho | Pendente: reconhecimento dos objetos |
 | Anti AFK | Ativar e segundos parado até o passo | Decisão pronta (passo ao lado + volta agendada, alterna o lado); pendente: leitura de andar dos tiles ao lado |
 | Se me puxarem | Ativar e salto que conta em tiles | Alarme quando um salto de posição não foi pedido pelo bot (voos/hunts/morte/carimbo próprio se isentam; jogador pode ensinar pontos); nascido ligado; pendente: som exclusivo e canal de fala de GM |
+| Auto combo (end game) | Ligar + times 1/2 (tank e danadores), wave, ring, relure, gap de move, item/limiar de poção, % de troca, safe-spot, pokestop | Decisão pronta (rotação tank→dano, lure/gather/approach/burst, skip de desmaiado, stale-reset, trocar o tank cedo e poção de socorro no meio do combo, safe-spot lido do perfil); pendente: leitura da pokebar no C++ e ações de execução |
 
 As opções são salvas em `%LOCALAPPDATA%\KBot\profile.json`. Salvar uma preferência não inicia
 automação. O núcleo C++ detecta o processo `PokeAlliance.exe` e responde a `PING` e `GET_STATUS`.

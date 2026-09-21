@@ -70,6 +70,35 @@ public sealed class BotProfile
     public bool VigiaEnabled { get; set; } = true;
     // Tiles of jump that count as a pull (clamped to >= 2 in Normalize). Default 3.
     public int VigiaDistThreshold { get; set; } = 3;
+    // End Game / Auto Combo (main_endgame.lua): 2x3 rotation (1 tank + 2 area-damage)
+    // that farms big waves WITHOUT revive - the swap is the cooldown reset. Off by
+    // default: the names below have to point at real pokebar slots first.
+    public bool EndgameEnabled { get; set; }
+    public string EndgameT1Tank { get; set; } = string.Empty;
+    public string EndgameT1D1 { get; set; } = string.Empty;
+    public string EndgameT1D2 { get; set; } = string.Empty;
+    public string EndgameT2Tank { get; set; } = string.Empty;
+    public string EndgameT2D1 { get; set; } = string.Empty;
+    public string EndgameT2D2 { get; set; } = string.Empty;
+    public int EndgameWaveCount { get; set; } = 8;      // wilds that must gather before the combo
+    public int EndgameRingTiles { get; set; } = 1;     // chebyshev ring around the tank counted as "glued"
+    public int EndgameSeeStop { get; set; } = 8;       // wilds on screen before the tank stops pulling
+    public int EndgameStopDist { get; set; } = 1;      // nearest-wild distance that also stops the pull
+    public int EndgameApproachSqm { get; set; } = 1;   // how close to the pile before the full combo
+    public int EndgameRelureS { get; set; } = 20;      // stalled-gather seconds before re-pulling (0 = wait forever)
+    public int EndgameMoveGapMs { get; set; } = 180;   // cadence between combo moves (Lua default)
+    public int EndgamePotItem { get; set; }            // potion item id (0 = no potion)
+    public int EndgamePotPct { get; set; } = 99;       // pot the tank below this %
+    public int EndgameSavePct { get; set; } = 40;      // mid-combo rescue potion threshold
+    public int EndgameSwapPct { get; set; } = 15;     // below this % pull the tank out early (swap)
+    public bool EndgameUseSafe { get; set; }          // walk the safe spot between teams
+    public int EndgameSafeReach { get; set; } = 1;    // tiles around the safe spot still counting as arrived
+    public int EndgameRecoverMaxS { get; set; } = 30; // max seconds waiting on in-ball cd
+    public int EndgameReburst { get; set; } = 5;      // damage re-combo cap while kit still has moves
+    public bool EndgamePokeStop { get; set; } = true; // speak !pokestop for damage pokes
+    public string EndgamePokeStopCmd { get; set; } = "!pokestop";
+    public int EndgameSafeX { get; set; }             // (0,0) = no safe spot -> recover in place
+    public int EndgameSafeY { get; set; }
     public bool PmReplyEnabled { get; set; }
     public string PmPhrases { get; set; } = string.Empty; // CSV of vague replies (see PmResponderService.DefaultPhrases)
     public List<SpellSetting> Spells { get; set; } = new();

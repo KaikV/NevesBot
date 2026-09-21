@@ -63,6 +63,32 @@ public sealed class SettingsViewModel : ObservableObject
     private string _antiAfkIdleSeconds = "50";
     private bool _vigiaEnabled = true;
     private string _vigiaDistThreshold = "3";
+    private bool _endgameEnabled;
+    private string _endgameT1Tank = string.Empty;
+    private string _endgameT1D1 = string.Empty;
+    private string _endgameT1D2 = string.Empty;
+    private string _endgameT2Tank = string.Empty;
+    private string _endgameT2D1 = string.Empty;
+    private string _endgameT2D2 = string.Empty;
+    private string _endgameWaveCount = "8";
+    private string _endgameRingTiles = "1";
+    private string _endgameSeeStop = "8";
+    private string _endgameStopDist = "1";
+    private string _endgameApproachSqm = "1";
+    private string _endgameRelureS = "20";
+    private string _endgameMoveGapMs = "180";
+    private string _endgamePotItem = "0";
+    private string _endgamePotPct = "99";
+    private string _endgameSavePct = "40";
+    private string _endgameSwapPct = "15";
+    private bool _endgameUseSafe;
+    private string _endgameSafeReach = "1";
+    private string _endgameRecoverMaxS = "30";
+    private string _endgameReburst = "5";
+    private bool _endgamePokeStop = true;
+    private string _endgamePokeStopCmd = "!pokestop";
+    private string _endgameSafeX = "0";
+    private string _endgameSafeY = "0";
     private bool _pmReplyEnabled;
     private string _pmPhrases = string.Empty;
     private readonly NativeService _nativeService = new();
@@ -112,6 +138,32 @@ public sealed class SettingsViewModel : ObservableObject
     public string AntiAfkIdleSeconds { get => _antiAfkIdleSeconds; set => Set(ref _antiAfkIdleSeconds, value); }
     public bool VigiaEnabled { get => _vigiaEnabled; set => Set(ref _vigiaEnabled, value); }
     public string VigiaDistThreshold { get => _vigiaDistThreshold; set => Set(ref _vigiaDistThreshold, value); }
+    public bool EndgameEnabled { get => _endgameEnabled; set => Set(ref _endgameEnabled, value); }
+    public string EndgameT1Tank { get => _endgameT1Tank; set => Set(ref _endgameT1Tank, value); }
+    public string EndgameT1D1 { get => _endgameT1D1; set => Set(ref _endgameT1D1, value); }
+    public string EndgameT1D2 { get => _endgameT1D2; set => Set(ref _endgameT1D2, value); }
+    public string EndgameT2Tank { get => _endgameT2Tank; set => Set(ref _endgameT2Tank, value); }
+    public string EndgameT2D1 { get => _endgameT2D1; set => Set(ref _endgameT2D1, value); }
+    public string EndgameT2D2 { get => _endgameT2D2; set => Set(ref _endgameT2D2, value); }
+    public string EndgameWaveCount { get => _endgameWaveCount; set => Set(ref _endgameWaveCount, value); }
+    public string EndgameRingTiles { get => _endgameRingTiles; set => Set(ref _endgameRingTiles, value); }
+    public string EndgameSeeStop { get => _endgameSeeStop; set => Set(ref _endgameSeeStop, value); }
+    public string EndgameStopDist { get => _endgameStopDist; set => Set(ref _endgameStopDist, value); }
+    public string EndgameApproachSqm { get => _endgameApproachSqm; set => Set(ref _endgameApproachSqm, value); }
+    public string EndgameRelureS { get => _endgameRelureS; set => Set(ref _endgameRelureS, value); }
+    public string EndgameMoveGapMs { get => _endgameMoveGapMs; set => Set(ref _endgameMoveGapMs, value); }
+    public string EndgamePotItem { get => _endgamePotItem; set => Set(ref _endgamePotItem, value); }
+    public string EndgamePotPct { get => _endgamePotPct; set => Set(ref _endgamePotPct, value); }
+    public string EndgameSavePct { get => _endgameSavePct; set => Set(ref _endgameSavePct, value); }
+    public string EndgameSwapPct { get => _endgameSwapPct; set => Set(ref _endgameSwapPct, value); }
+    public bool EndgameUseSafe { get => _endgameUseSafe; set => Set(ref _endgameUseSafe, value); }
+    public string EndgameSafeReach { get => _endgameSafeReach; set => Set(ref _endgameSafeReach, value); }
+    public string EndgameRecoverMaxS { get => _endgameRecoverMaxS; set => Set(ref _endgameRecoverMaxS, value); }
+    public string EndgameReburst { get => _endgameReburst; set => Set(ref _endgameReburst, value); }
+    public bool EndgamePokeStop { get => _endgamePokeStop; set => Set(ref _endgamePokeStop, value); }
+    public string EndgamePokeStopCmd { get => _endgamePokeStopCmd; set => Set(ref _endgamePokeStopCmd, value); }
+    public string EndgameSafeX { get => _endgameSafeX; set => Set(ref _endgameSafeX, value); }
+    public string EndgameSafeY { get => _endgameSafeY; set => Set(ref _endgameSafeY, value); }
     public bool PmReplyEnabled { get => _pmReplyEnabled; set => Set(ref _pmReplyEnabled, value); }
     public string PmPhrases { get => _pmPhrases; set => Set(ref _pmPhrases, value); }
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
@@ -220,6 +272,47 @@ public sealed class SettingsViewModel : ObservableObject
             Feedback = "O salto que conta como puxão deve ser um número inteiro de tiles maior ou igual a 2.";
             return null;
         }
+        if (!int.TryParse(EndgameWaveCount, out var egWaveCount) || egWaveCount < 1 ||
+            !int.TryParse(EndgameRingTiles, out var egRingTiles) || egRingTiles < 1 ||
+            !int.TryParse(EndgameSeeStop, out var egSeeStop) || egSeeStop < 1 ||
+            !int.TryParse(EndgameStopDist, out var egStopDist) || egStopDist < 1 ||
+            !int.TryParse(EndgameApproachSqm, out var egApproachSqm) || egApproachSqm < 1)
+        {
+            Feedback = "O auto combo (end game): wave, anel, parada e aproximação devem ser números inteiros maiores ou iguais a 1.";
+            return null;
+        }
+        if (!int.TryParse(EndgameRelureS, out var egRelureS) || egRelureS < 0 ||
+            !int.TryParse(EndgameMoveGapMs, out var egMoveGapMs) || egMoveGapMs < 60)
+        {
+            Feedback = "O auto combo (end game): relure em segundos (0 = espera para sempre) e gap de moves em ms (mínimo 60) devem ser inteiros válidos.";
+            return null;
+        }
+        if (!int.TryParse(EndgamePotItem, out var egPotItem) || egPotItem < 0 ||
+            (egPotItem > 0 && egPotItem < 100))
+        {
+            Feedback = "O item de potion do auto combo deve ser 0 (sem potion) ou o ID do servidor (100 ou mais).";
+            return null;
+        }
+        if (!int.TryParse(EndgamePotPct, out var egPotPct) || egPotPct < 1 || egPotPct > 100 ||
+            !int.TryParse(EndgameSavePct, out var egSavePct) || egSavePct < 0 || egSavePct > 100 ||
+            !int.TryParse(EndgameSwapPct, out var egSwapPct) || egSwapPct < 0 || egSwapPct > 100)
+        {
+            Feedback = "Os percentuais do auto combo devem estar entre 0 e 100 (potion entre 1 e 100).";
+            return null;
+        }
+        if (!int.TryParse(EndgameSafeReach, out var egSafeReach) || egSafeReach < 0 ||
+            !int.TryParse(EndgameRecoverMaxS, out var egRecoverMaxS) || egRecoverMaxS < 0 ||
+            !int.TryParse(EndgameReburst, out var egReburst) || egReburst < 0)
+        {
+            Feedback = "O auto combo: alcance do safe spot, tempo máximo de cooldown e re-combo devem ser inteiros maiores ou iguais a zero.";
+            return null;
+        }
+        if (!int.TryParse(EndgameSafeX, out var egSafeX) || egSafeX < 0 ||
+            !int.TryParse(EndgameSafeY, out var egSafeY) || egSafeY < 0)
+        {
+            Feedback = "As coordenadas do safe spot do auto combo devem ser números inteiros maiores ou iguais a zero.";
+            return null;
+        }
         if (CureAtPercent < 0 || CureAtPercent > 100)
         {
             Feedback = "O limite de cura deve estar entre 0 e 100.";
@@ -282,6 +375,32 @@ public sealed class SettingsViewModel : ObservableObject
             AntiAfkIdleSeconds = antiAfkIdleSeconds,
             VigiaEnabled = VigiaEnabled,
             VigiaDistThreshold = vigiaDistThreshold,
+            EndgameEnabled = EndgameEnabled,
+            EndgameT1Tank = EndgameT1Tank.Trim(),
+            EndgameT1D1 = EndgameT1D1.Trim(),
+            EndgameT1D2 = EndgameT1D2.Trim(),
+            EndgameT2Tank = EndgameT2Tank.Trim(),
+            EndgameT2D1 = EndgameT2D1.Trim(),
+            EndgameT2D2 = EndgameT2D2.Trim(),
+            EndgameWaveCount = egWaveCount,
+            EndgameRingTiles = egRingTiles,
+            EndgameSeeStop = egSeeStop,
+            EndgameStopDist = egStopDist,
+            EndgameApproachSqm = egApproachSqm,
+            EndgameRelureS = egRelureS,
+            EndgameMoveGapMs = egMoveGapMs,
+            EndgamePotItem = egPotItem,
+            EndgamePotPct = egPotPct,
+            EndgameSavePct = egSavePct,
+            EndgameSwapPct = egSwapPct,
+            EndgameUseSafe = EndgameUseSafe,
+            EndgameSafeReach = egSafeReach,
+            EndgameRecoverMaxS = egRecoverMaxS,
+            EndgameReburst = egReburst,
+            EndgamePokeStop = EndgamePokeStop,
+            EndgamePokeStopCmd = string.IsNullOrWhiteSpace(EndgamePokeStopCmd) ? "!pokestop" : EndgamePokeStopCmd.Trim(),
+            EndgameSafeX = egSafeX,
+            EndgameSafeY = egSafeY,
             PmReplyEnabled = PmReplyEnabled,
             PmPhrases = PmPhrases,
             Spells = spells
@@ -429,6 +548,32 @@ public sealed class SettingsViewModel : ObservableObject
         AntiAfkIdleSeconds = profile.AntiAfkIdleSeconds.ToString();
         VigiaEnabled = profile.VigiaEnabled;
         VigiaDistThreshold = profile.VigiaDistThreshold.ToString();
+        EndgameEnabled = profile.EndgameEnabled;
+        EndgameT1Tank = profile.EndgameT1Tank;
+        EndgameT1D1 = profile.EndgameT1D1;
+        EndgameT1D2 = profile.EndgameT1D2;
+        EndgameT2Tank = profile.EndgameT2Tank;
+        EndgameT2D1 = profile.EndgameT2D1;
+        EndgameT2D2 = profile.EndgameT2D2;
+        EndgameWaveCount = profile.EndgameWaveCount.ToString();
+        EndgameRingTiles = profile.EndgameRingTiles.ToString();
+        EndgameSeeStop = profile.EndgameSeeStop.ToString();
+        EndgameStopDist = profile.EndgameStopDist.ToString();
+        EndgameApproachSqm = profile.EndgameApproachSqm.ToString();
+        EndgameRelureS = profile.EndgameRelureS.ToString();
+        EndgameMoveGapMs = profile.EndgameMoveGapMs.ToString();
+        EndgamePotItem = profile.EndgamePotItem.ToString();
+        EndgamePotPct = profile.EndgamePotPct.ToString();
+        EndgameSavePct = profile.EndgameSavePct.ToString();
+        EndgameSwapPct = profile.EndgameSwapPct.ToString();
+        EndgameUseSafe = profile.EndgameUseSafe;
+        EndgameSafeReach = profile.EndgameSafeReach.ToString();
+        EndgameRecoverMaxS = profile.EndgameRecoverMaxS.ToString();
+        EndgameReburst = profile.EndgameReburst.ToString();
+        EndgamePokeStop = profile.EndgamePokeStop;
+        EndgamePokeStopCmd = profile.EndgamePokeStopCmd;
+        EndgameSafeX = profile.EndgameSafeX.ToString();
+        EndgameSafeY = profile.EndgameSafeY.ToString();
         PmReplyEnabled = profile.PmReplyEnabled;
         PmPhrases = profile.PmPhrases;
     }

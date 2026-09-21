@@ -59,6 +59,33 @@ public interface IProfileView
     int AntiAfkIdleSeconds { get; }
     bool VigiaEnabled { get; }
     int VigiaDistThreshold { get; }
+    // End Game / Auto Combo (main_endgame.lua) - the 2x3 no-revive rotation.
+    bool EndgameEnabled { get; }
+    string EndgameT1Tank { get; }
+    string EndgameT1D1 { get; }
+    string EndgameT1D2 { get; }
+    string EndgameT2Tank { get; }
+    string EndgameT2D1 { get; }
+    string EndgameT2D2 { get; }
+    int EndgameWaveCount { get; }
+    int EndgameRingTiles { get; }
+    int EndgameSeeStop { get; }
+    int EndgameStopDist { get; }
+    int EndgameApproachSqm { get; }
+    int EndgameRelureS { get; }
+    int EndgameMoveGapMs { get; }
+    int EndgamePotItem { get; }
+    int EndgamePotPct { get; }
+    int EndgameSavePct { get; }
+    int EndgameSwapPct { get; }
+    bool EndgameUseSafe { get; }
+    int EndgameSafeReach { get; }
+    int EndgameRecoverMaxS { get; }
+    int EndgameReburst { get; }
+    bool EndgamePokeStop { get; }
+    string EndgamePokeStopCmd { get; }
+    int EndgameSafeX { get; }
+    int EndgameSafeY { get; }
     IReadOnlyList<SpellSettingView> Spells { get; }
 }
 

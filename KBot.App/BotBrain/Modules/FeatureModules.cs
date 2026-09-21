@@ -243,6 +243,108 @@ public sealed class VigiaModule : IBotModule
     }
 }
 
+// Port of main_endgame.lua ("SOFA // Auto Combo"). Priority 90, registered right
+// after Socorro so the stable order is Vigia > Healing > Socorro > Endgame >
+// Targeting. The rotation (2 teams of 3, no revive) lives in EndgameTracker
+// (EndgameDetect.cs); this module builds one snapshot per tick from the scan
+// and translates the tracker's step into an ActionIntent. A Hold tick returns a
+// SENTINEL COMMAND, not null: the Lua stamps _G.sofaEGRunning and every other
+// module steps aside, so nothing lower-priority may act on the same tick.
+public sealed class EndgameModule : IBotModule
+{
+    public string Name => "EndGame";
+    public int Priority => 90;
+
+    private readonly EndgameTracker _tracker = new();
+
+    public string Status { get; private set; } = "";
+
+    public ActionIntent? Decide(GameState s, IProfileView p)
+    {
+        if (!p.EndgameEnabled || !s.InGame || !s.HasPosition)
+        {
+            _tracker.Reset();
+            return null;
+        }
+
+        var bar = s.Pokebar;
+        if (bar.Count == 0)
+        {
+            // Lua stamps sofaEGRunning only AFTER the pokebar check: nothing is
+            // owned yet -> a silent arm, other modules may act.
+            _tracker.Reset();
+            Status = "esperando a barra de pokemons";
+            return null;
+        }
+
+        var cfg = new EndgameConfig(
+            EndgameConfig.FixedRoles(
+                p.EndgameT1Tank, p.EndgameT1D1, p.EndgameT1D2,
+                p.EndgameT2Tank, p.EndgameT2D1, p.EndgameT2D2),
+            p.EndgameWaveCount, p.EndgameRingTiles, p.EndgameSeeStop, p.EndgameStopDist,
+            p.EndgameApproachSqm, p.EndgameRelureS, p.EndgameMoveGapMs,
+            p.EndgamePotItem, p.EndgamePotPct, p.EndgameSavePct, p.EndgameSwapPct,
+            p.EndgameUseSafe, p.EndgameSafeReach, p.EndgameRecoverMaxS, p.EndgameReburst,
+            p.EndgamePokeStop);
+
+        var snap = BuildSnapshot(s, bar, p.EndgameRingTiles,
+            p.EndgameUseSafe ? p.EndgameSafeX : 0,
+            p.EndgameUseSafe ? p.EndgameSafeY : 0);
+        var step = _tracker.Tick(cfg, snap);
+        Status = step.Detail.Length > 0 ? step.Detail : $"/{_tracker.Phase}";
+        return ToIntent(step, p);
+    }
+
+    // Pre-computes the four wild questions the tracker asks (same floor,
+    // chebyshev - a monster on another floor never joins the wave). The safe
+    // spot is (0,0,0) unless a real one is configured - then recovery walks
+    // there on the current floor.
+    private static EndgameSnapshot BuildSnapshot(GameState s, IReadOnlyList<PokebarSlot> bar, int ringTiles, int safeX, int safeY)
+    {
+        int stuck = 0, seen = 0, nearest = -1;
+        string? nearestName = null;
+        foreach (var w in s.Wilds)
+        {
+            int d = System.Math.Max(System.Math.Abs(w.X - s.X), System.Math.Abs(w.Y - s.Y));
+            if (d <= System.Math.Max(1, EndgameTracker.ScreenRadius))
+            {
+                seen++;
+                if (d < nearest || nearest < 0) { nearest = d; nearestName = w.Name; }
+                if (w.Z == s.Z && d <= System.Math.Max(1, ringTiles)) stuck++;
+            }
+        }
+        bool hasSafe = safeX > 0 || safeY > 0;
+        return new EndgameSnapshot(
+            s.NowMs, true,
+            s.X, s.Y, s.Z,
+            ActiveRole(s), s.ActiveHpPercent,
+            stuck, seen, nearest, nearestName,
+            KitReadyMoves: 0, TeamCdReady: null,
+            PokeX: null, PokeY: null,
+            SafeX: hasSafe ? safeX : 0, SafeY: hasSafe ? safeY : 0, SafeZ: hasSafe ? s.Z : 0,
+            bar);
+    }
+
+    private static string ActiveRole(GameState s)
+    {
+        if (s.ActivePokebarSlot is not int slot || slot < 1 || slot >= s.Pokebar.Count) return "";
+        return s.Pokebar[slot - 1].Name;
+    }
+
+    private static ActionIntent? ToIntent(EndgameStep step, IProfileView p) => step.Intent switch
+    {
+        EndgameIntents.Hold => ActionIntent.Command("eghold", "donopoke"),
+        EndgameIntents.Summon => ActionIntent.Command("summon", step.Arg),
+        EndgameIntents.Potion => ActionIntent.Command("use", step.Arg),
+        EndgameIntents.Cast => ActionIntent.Command("attack", step.Arg),
+        EndgameIntents.PokeStop => ActionIntent.Command("pokestop",
+            string.IsNullOrWhiteSpace(p.EndgamePokeStopCmd) ? "!pokestop" : p.EndgamePokeStopCmd.Trim()),
+        EndgameIntents.MovePile or EndgameIntents.MoveSafe
+            when !string.IsNullOrEmpty(step.Arg) && step.Arg != "idle" => ActionIntent.Move(step.Arg),
+        _ => ActionIntent.Command("eghold", "donopoke"),
+    };
+}
+
 // Port of nL_antiafk.lua. Lowest priority: a single sideways step when the
 // character stands on one tile for too long, followed by the scheduled step back.
 // The idle clock, volta scheduling, side alternation and both-sides-blocked retry

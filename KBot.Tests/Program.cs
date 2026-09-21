@@ -29,7 +29,7 @@ Check(status is { NativeOnline: true, ClientFound: false, Pid: 0, ProcessName: "
 
 var positioned = JsonSerializer.Deserialize<NativeStatus>("{\"nativeOnline\":true,\"clientFound\":true,\"pid\":4242,\"processName\":\"PokeAlliance_gl.exe\",\"readerStatus\":\"READY\",\"hasPosition\":true,\"posX\":4066,\"posY\":3458,\"posZ\":5}");
 Check(positioned is { HasPosition: true, PosX: 4066, PosY: 3458, PosZ: 5 }, "Native position mapping");
-Check(!status.HasPosition && status.PosX == 0 && status.ReaderStatus is null, "Missing position defaults to unavailable");
+Check(!status!.HasPosition && status.PosX == 0 && status.ReaderStatus is null, "Missing position defaults to unavailable");
 
 var migratedClient = JsonSerializer.Deserialize<GameInstallation>("{\"Name\":\"PokeAlliance\",\"ExecutablePath\":\"C:\\\\Games\\\\PokeAlliance\\\\PokeAlliance.exe\",\"WorkingDirectory\":\"C:\\\\Games\\\\PokeAlliance\"}")!;
 migratedClient.Normalize();
@@ -320,6 +320,7 @@ RunAlertChecks();
 RunFishingChecks();
 RunAntiafkChecks();
 RunVigiaChecks();
+RunEndgameChecks();
 
 static void RunSocorroChecks()
 {
@@ -1269,6 +1270,248 @@ static void RunVigiaChecks()
         Check(mod.Decide(died, on) is null, "Module: death line: no pull yet");
         var temple = died with { X = 60, Y = 60, Z = 9, NowMs = T0 + 25_000 };
         Check(mod.Decide(temple, on) is null, "Module: temple return inside the death stamp: silent");
+    }
+}
+
+static void RunEndgameChecks()
+{
+    static PokebarSlot B(string n, double hp) => new(n, hp);
+    var bar = new[] { B("Pikachu", 80), B("Gengar", 60), B("Shiny Pikachu", 90), B("Snorlax", 100), B("Eevee", 70), B("Jolteon", 50) };
+    // The six seats named in order; "Shiny Pikachu" (slot 3) is the t1 d1 - the
+    // EXACT-name rule must beat the bare "Pikachu" (slot 1).
+    var roles = EndgameConfig.FixedRoles("Pikachu", "Shiny Pikachu", "Snorlax", "Eevee", "Jolteon", "");
+    EndgameConfig Cfg(int potItem = 0) => new(roles,
+        WaveCount: 2, RingTiles: 1, SeeStop: 2, StopDist: 1,
+        ApproachSqm: 1, RelureS: 20, MoveGapMs: 180,
+        PotItem: potItem, PotPct: 99, SavePct: 40, SwapPct: 15,
+        UseSafe: false, SafeReach: 1, RecoverMaxS: 30, Reburst: 1, PokeStop: true);
+    System.Collections.Generic.IReadOnlyList<ScannedCreature> W(params (int x, int y)[] pts)
+    {
+        var list = new List<ScannedCreature>();
+        foreach (var p in pts) list.Add(new ScannedCreature(1, 100, p.x, p.y, 5));
+        return list;
+    }
+    static EndgameSnapshot Snap(long t, int? slot, IReadOnlyList<PokebarSlot> pb,
+        System.Collections.Generic.IReadOnlyList<ScannedCreature> w, double? hp = null) => new(
+        t, Online: true, CharX: 10, CharY: 10, CharZ: 5,
+        ActiveRole: slot is int i ? pb[i - 1].Name : "", ActiveHp: hp,
+        StuckWildCount: w.Count(c => System.Math.Max(System.Math.Abs(c.X - 10), System.Math.Abs(c.Y - 10)) <= 1 && c.Z == 5),
+        ScreenWildCount: w.Count, NearestWildDist: w.Count == 0 ? -1 : w.Min(c => System.Math.Max(System.Math.Abs(c.X - 10), System.Math.Abs(c.Y - 10))),
+        NearestWildName: null, KitReadyMoves: 0, TeamCdReady: null,
+        PokeX: null, PokeY: null, SafeX: 0, SafeY: 0, SafeZ: 5, Pokebar: pb);
+    EndgameStep Tick(EndgameTracker tr, EndgameConfig c, long t, int? slot,
+        IReadOnlyList<PokebarSlot> pb, System.Collections.Generic.IReadOnlyList<ScannedCreature> w, double? hp = null) =>
+        tr.Tick(c, Snap(t, slot, pb, w, hp));
+
+    // A) Slot resolution: exact name wins over same-name-no-prefix; ambiguous
+    //    names ABORT instead of guessing the wrong swap.
+    {
+        Check(EndgameTracker.ResolveSlot("Pikachu", bar) == 1, "EG slot: exact 'Pikachu' -> 1");
+        Check(EndgameTracker.ResolveSlot("pikachu [25]", bar) == 1, "EG slot: level suffix stripped");
+        Check(EndgameTracker.ResolveSlot("PIKACHU", bar) == 1, "EG slot: case-insensitive");
+        Check(EndgameTracker.ResolveSlot("Shiny Pikachu", bar) == 3, "EG slot: exact 'Shiny Pikachu' -> 3");
+        Check(EndgameTracker.ResolveSlot("shiny pikachu", bar) == 3, "EG slot: prefix match case-insensitive");
+        var dup = new[] { B("Gengar", 50), B("Gengar", 50) };
+        Check(EndgameTracker.ResolveSlot("Gengar", dup) is null, "EG slot: two 'Gengar' -> ambiguous -> null");
+        var prefixBar = new[] { B("Pikachu", 50), B("Shiny Gengar", 50), B("Gengar", 50) };
+        Check(EndgameTracker.ResolveSlot("shiny gengar", prefixBar) == 2, "EG slot: prefix second-chance finds the shiny one");
+        Check(EndgameTracker.ResolveSlot("", bar) is null, "EG slot: empty name -> null");
+        Check(EndgameTracker.ResolveSlot("Gengar", System.Array.Empty<PokebarSlot>()) is null, "EG slot: empty pokebar -> null");
+    }
+
+    // B) Full rotation, faithful to the Lua flow: send -> out-confirm -> pot
+    //    (pots the tank even with an unread HP, even with no item configured) ->
+    //    lure -> gather -> approach (poke pos unread -> dist 0) -> tank combo ->
+    //    burstwait -> dmg poke (pokestop, instant combo) -> next dmg -> wave
+    //    cleared -> JUMP TO THE OTHER TEAM (in-place recover, no safe spot).
+    {
+        var tr = new EndgameTracker();
+        var c = Cfg();
+        var empty = W();
+        var near = W((13, 10), (14, 10));
+        var pile = W((9, 10), (11, 10));
+        Check(Tick(tr, c, 1000, null, bar, empty) is { Intent: "summon", Arg: "Pikachu:1" }, "EG B: send Pika (seat 1)");
+        Check(tr.Phase == "out" && tr.RoleIndex == 0, "EG B: send -> waiting for the swap");
+        Check(Tick(tr, c, 1600, 1, bar, empty).Detail.Contains("fora"), "EG B: out confirmed");
+        Check(tr.Phase == "pot", "EG B: confirmed out -> pot the tank");
+        Check(Tick(tr, c, 2200, 1, bar, empty).Intent == "", "EG B: no item configured -> straight to lure");
+        Check(tr.Phase == "lure", "EG B: tank pulls");
+        Check(Tick(tr, c, 2800, 1, bar, near).Intent == "", "EG B: lure stops at 2 seen");
+        Check(tr.Phase == "gather", "EG B: gather armed");
+        Check(Tick(tr, c, 3400, 1, bar, pile).Intent == "", "EG B: wave closed -> approach");
+        Check(tr.Phase == "approach", "EG B: approach phase");
+        Check(Tick(tr, c, 4000, 1, bar, pile).Intent == "" && tr.Phase == "burst", "EG B: in the pile (dist 0) -> full combo");
+        var cast = Tick(tr, c, 4600, 1, bar, pile);
+        Check(cast.Intent == "cast" && cast.Arg.StartsWith("tank:12") && cast.RoleLabel.Contains("Tank"), $"EG B: tank full combo (got {cast.Arg})");
+        Check(tr.Phase == "burstwait", "EG B: burstwait phase");
+        Check(Tick(tr, c, 5200, 1, bar, pile).Intent == "", "EG B: combo running");
+        Check(Tick(tr, c, 7100, 1, bar, pile).Intent == "", "EG B: combo done -> advance (hold)");
+        Check(tr.RoleIndex == 1, "EG B: advanced to seat 2");
+        // The game swapped to the shiny d1 (slot 3): IsOut recognizes the role and
+        // fires !pokestop ONCE, then combos straight away.
+        var ps = Tick(tr, c, 7200, 3, bar, near);
+        Check(ps.Intent == "pokestop" && tr.Phase == "dmg", $"EG B: dmg pokestop once ({ps.Detail})");
+        var burst = Tick(tr, c, 7400, 3, bar, near);
+        Check(burst.Intent == "" && tr.Phase == "burst", "EG B: dmg walks into the wave");
+        var dcast = Tick(tr, c, 7800, 3, bar, pile);
+        Check(dcast.Intent == "cast" && dcast.Arg.StartsWith("dmg:12"), $"EG B: dmg1 combo ({dcast.Arg})");
+        Check(tr.Phase == "burstwait", "EG B: dmg1 burstwait");
+        // Wave cleared mid-burst -> JUMP TO THE OTHER TEAM (no safe spot), the T2
+        // tank was left out on purpose so the jump skips straight to pot/lure.
+        Check(Tick(tr, c, 8400, 3, bar, pile).Intent == "", "EG B: combo running");
+        var jump = Tick(tr, c, 10400, 3, bar, empty);
+        Check(jump.Detail.Contains("proximo time") && tr.RoleIndex == 3, $"EG B: wave cleared -> next team ({jump.Detail})");
+        Check(Tick(tr, c, 10600, 3, bar, empty) is { Intent: "summon", Arg: "Eevee:5" }, "EG B: T2 tank goes out");
+        var rk = Tick(tr, c, 11201, 5, bar, empty);
+        Check(rk.Detail.Contains("fora") && tr.Phase == "pot", $"EG B: T2 out confirmed ({rk.Detail})");
+        Check(Tick(tr, c, 11802, 5, bar, empty).Detail.Contains("pronto pra puxar") && tr.Phase == "lure" && tr.RoleIndex == 3,
+            "EG B: team ready -> T2 tank pulls the next wave");
+    }
+
+    // C) Fainted pokes are SKIPPED (never revived): advancing over a 0% seat
+    //    jumps to the next live seat instead of summoning the fainted one.
+    {
+        var barF0 = new[] { B("Pikachu", 100), B("Gengar", 60), B("Eevee", 70) };
+        var barF = new[] { B("Pikachu", 100), B("Gengar", 0), B("Eevee", 70) };
+        var rolesF = EndgameConfig.FixedRoles("Pikachu", "Gengar", "Eevee", "", "", "");
+        var c = new EndgameConfig(rolesF, 2, 1, 2, 1, 1, 20, 180, 0, 99, 40, 15, false, 1, 30, 1, true);
+        var tr = new EndgameTracker();
+        Check(Tick(tr, c, 1000, null, barF0, W()) is { Intent: "summon", Arg: "Pikachu:1" }, "EG C: send (alive)");
+        Check(Tick(tr, c, 1601, 1, barF0, W()).Detail.Contains("fora"), "EG C: out confirmed");
+        Check(Tick(tr, c, 2202, 1, barF, W()).Intent == "", "EG C: straight to lure (no item)");
+        Check(Tick(tr, c, 2803, 1, barF, W((13, 10), (14, 10))).Intent == "", "EG C: lure stops at 2 seen");
+        Check(Tick(tr, c, 3404, 1, barF, W((9, 10), (11, 10))).Intent == "", "EG C: wave closed -> approach");
+        Check(Tick(tr, c, 4005, 1, barF, W((9, 10), (11, 10))).Intent == "" && tr.Phase == "burst", "EG C: in the pile -> combo");
+        var c1 = Tick(tr, c, 4606, 1, barF, W((9, 10), (11, 10)));
+        Check(c1.Intent == "cast" && c1.Arg.StartsWith("tank:12"), $"EG C: tank combo ({c1.Arg})");
+        for (long t = 5200; t < 6700; t += 600) Tick(tr, c, t, 1, barF, W((9, 10), (11, 10))); // burstwait ends -> advance
+        Check(Tick(tr, c, 7101, 1, barF, W((9, 10), (11, 10))).Intent == "", "EG C: advance over the fainted seat (hold)");
+        Check(tr.RoleIndex == 2, "EG C: fainted Gengar skipped (seat 3)");
+        var s3 = Tick(tr, c, 7652, 1, barF, W((9, 10), (11, 10)));
+        Check(s3.Intent == "summon" && s3.Arg == "Eevee:3", $"EG C: next live seat sent ({s3.Arg})");
+    }
+
+    // D) All seats dead/unreadable/ambiguous: the macro disarms itself.
+    {
+        var barDead = new[] { B("Pikachu", 0), B("Gengar", 0), B("Eevee", 0), B("Gengar", 100) };
+        var rolesD = EndgameConfig.FixedRoles("Pikachu", "Eevee", "", "Gengar", "", "");
+        var c = new EndgameConfig(rolesD, 2, 1, 2, 1, 1, 20, 180, 0, 99, 40, 15, false, 1, 30, 1, true);
+        var tr = new EndgameTracker();
+        var st = Tick(tr, c, 1000, null, barDead, W());
+        Check(st.Intent == "" && st.Detail.Contains("nenhum pokemon utilizavel"), "EG D: nobody usable -> hold");
+        Check(tr.Phase.Length == 0, "EG D: tracker reset");
+    }
+
+    // E) Offline / empty pokebar / a gap longer than the stale window: forget
+    //    every cycle state and re-arm cleanly.
+    {
+        var tr = new EndgameTracker();
+        var c = Cfg();
+        var empty = W();
+        Check(Tick(tr, c, 1000, null, bar, empty).Intent == "summon", "EG E: mid-cycle");
+        var off = new EndgameSnapshot(1601, Online: false, 10, 10, 5, "", null, 0, 0, -1, null, 0, null, null, null, 0, 0, 5, bar);
+        Check(tr.Tick(c, off).Detail == "offline" && tr.Phase.Length == 0, "EG E: offline resets");
+        var emptyBar = new EndgameSnapshot(1802, Online: true, 10, 10, 5, "", null, 0, 0, -1, null, 0, null, null, null, 0, 0, 5, System.Array.Empty<PokebarSlot>());
+        Check(tr.Tick(c, emptyBar).Detail.Contains("barra") && tr.Phase.Length == 0, "EG E: empty pokebar arms silently");
+        Check(Tick(tr, c, 2203, null, bar, empty).Intent == "summon" && tr.RoleIndex == 0, "EG E: fresh arm after re-read");
+        var r1 = Tick(tr, c, 2804, null, bar, empty);
+        Check(r1.Intent == "" && r1.Detail.Contains("tentando de novo") && tr.Phase == "send", "EG E: unconfirmed swap retries in place");
+        Check(Tick(tr, c, 3405, null, bar, empty).Intent == "summon", "EG E: <=2s gap keeps the cycle (re-send)");
+        Check(Tick(tr, c, 6006, null, bar, empty).Intent == "summon" && tr.RoleIndex == 0, "EG E: >2s gap forced a reset + fresh arm");
+    }
+
+    // F) Stalled gather: after RelureS the macro walks again for a full 6s
+    //    (no stop triggers during that window), then can stop normally.
+    {
+        var rolesF = EndgameConfig.FixedRoles("Pikachu", "Shiny Pikachu", "", "", "", "");
+        var c = new EndgameConfig(rolesF, 2, 1, 99, 99, 1, 4, 180, 0, 99, 40, 15, false, 1, 30, 1, true);
+        var tr = new EndgameTracker();
+        var far = W((16, 10));                                       // seen 1, dist 6
+        var seen2 = W((16, 10), (17, 10));                           // seen 2, stuck 0
+        Check(Tick(tr, c, 1000, null, bar, W()).Intent == "summon", "EG F: send");
+        Check(Tick(tr, c, 1601, 1, bar, far).Detail.Contains("fora"), "EG F: out confirmed");
+        Check(Tick(tr, c, 2052, 1, bar, far).Detail.Contains("pronto pra puxar") && tr.Phase == "lure", "EG F: in lure");
+        var g = Tick(tr, c, 2503, 1, bar, far);                     // near-wild stop (StopDist wide)
+        Check(g.Detail.Contains("parou") && tr.Phase == "gather", $"EG F: stopped & gather armed ({g.Detail})");
+        for (long t = 3500; t <= 6000; t += 2000) Tick(tr, c, t, 1, bar, far);   // holding the wave
+        var rp = Tick(tr, c, 6601, 1, bar, far);                    // >4s stalled -> walk again
+        Check(rp.Detail.Contains("voltando a andar") && tr.Phase == "lure", $"EG F: stalled gather re-pulls ({rp.Detail})");
+        for (long t = 8600; t <= 12598; t += 1500)
+            Check(Tick(tr, c, t, 1, bar, far).Intent == "", "EG F: no stop trigger inside the 6s walk window");
+        Check(tr.Phase == "lure", "EG F: still in the walk window");
+        Check(Tick(tr, c, 12899, 1, bar, far).Detail.Contains("parou"), "EG F: walk window over -> stops again");
+        Check(tr.Phase == "gather", "EG F: gather re-armed");
+        var done = Tick(tr, c, 13400, 1, bar, W((9, 10), (11, 10)));  // both stuck now
+        Check(done.Intent == "" && tr.Phase == "approach", "EG F: wave closed -> approach");
+    }
+
+    // G) Tank safety: below the swap line the tank is pulled out EARLY (the swap
+    //    collects it from the middle of the wave); mid-burst only the potion may
+    //    act, the swap waits for the combo to finish.
+    {
+        var rolesG = EndgameConfig.FixedRoles("Pikachu", "Eevee", "", "", "", "");
+        var c = new EndgameConfig(rolesG, 2, 1, 2, 1, 1, 20, 180, 0, 99, 40, 15, false, 1, 30, 1, true);
+        var tr = new EndgameTracker();
+        Tick(tr, c, 1000, null, bar, W());                         // send
+        Check(Tick(tr, c, 1601, 1, bar, W()).Detail.Contains("fora"), "EG G: out confirmed");
+        Check(Tick(tr, c, 2052, 1, bar, W()).Detail.Contains("pronto pra puxar") && tr.Phase == "lure", "EG G: in lure");
+        Check(Tick(tr, c, 3404, 1, bar, W((16, 10))).Intent == "", "EG G: pulling with a healthy tank");
+        var weak = new EndgameSnapshot(3905, true, 10, 10, 5, "Pikachu", 10, 0, 1, 3, null, 0, null, null, null, 0, 0, 5, bar);
+        var swap = tr.Tick(c, weak);
+        Check(swap.Intent == "" && swap.Detail.Contains("troca"), $"EG G: tank 10% <= swap 15% -> early pull ({swap.Detail})");
+        Check(tr.RoleIndex == 1, "EG G: advanced (swap collects the tank)");
+
+        // Mid-burst: allowSwap=false - only the potion branch fires, and the
+        // potion cooldown blocks a second one. Clocks start above the 10s item
+        // CD so the on-the-way-back potion arms cleanly.
+        var tr2 = new EndgameTracker();
+        var cg = new EndgameConfig(rolesG, 2, 1, 2, 1, 1, 20, 3000, 1000, 99, 40, 15, false, 1, 30, 1, true);
+        var pile = W((9, 10), (11, 10));
+        var far = W((16, 10));
+        Tick(tr2, cg, 11000, null, bar, W());                      // send
+        Check(Tick(tr2, cg, 11601, 1, bar, far).Detail.Contains("fora"), "EG G: out confirmed");
+        var pot2 = Tick(tr2, cg, 12052, 1, bar, far);
+        Check(pot2.Intent == "potion" && pot2.Arg == "1000", "EG G: pot the hurt tank on the way out");
+        Check(Tick(tr2, cg, 12800, 1, bar, pile).Detail.Contains("colou") && tr2.Phase == "gather", "EG G: wave glued -> gather");
+        Check(Tick(tr2, cg, 13401, 1, bar, pile).Detail.Contains("chegando na pilha") && tr2.Phase == "approach", "EG G: approach");
+        Check(Tick(tr2, cg, 14002, 1, bar, pile).Intent == "" && tr2.Phase == "burst", "EG G: in the pile -> combo armed");
+        var cast2 = Tick(tr2, cg, 15500, 1, bar, pile);
+        Check(cast2.Intent == "cast" && cast2.Arg.StartsWith("tank:12") && tr2.Phase == "burstwait", $"EG G: tank combo ({cast2.Arg})");
+        for (long t = 17500; t <= 21500; t += 2000)
+            Check(Tick(tr2, cg, t, 1, bar, pile, 80).Intent == "", "EG G: combo running (healthy)");
+        var mw = Tick(tr2, cg, 22503, 1, bar, pile, 12);           // tank at 12% mid-combo
+        Check(mw.Intent == "potion" && mw.Detail.Contains("socorro") && tr2.Phase == "burstwait",
+            $"EG G: mid-burst rescue potion, NO early swap ({mw.Detail})");
+        var again = Tick(tr2, cg, 23004, 1, bar, pile, 12);
+        Check(again.Intent == "" && tr2.Phase == "burstwait", "EG G: potion cooldown blocks the repeat");
+    }
+
+    // H) Module gating: off -> null; no pokebar read -> silent arm (null);
+    //    armed -> a real intent (never null while it owns the tick).
+    {
+        var mod = new EndgameModule();
+        var sBase = new GameState
+        {
+            ClientConnected = true, InGame = true, HasPosition = true, X = 10, Y = 10, Z = 5, NowMs = 1000,
+            Pokebar = bar, ActivePokebarSlot = null, ActiveHpPercent = null
+        };
+        var onProf = new ProfileView(new BotProfile
+        {
+            EndgameEnabled = true,
+            EndgameT1Tank = "Pikachu", EndgameT1D1 = "Shiny Pikachu", EndgameT1D2 = "Snorlax",
+            EndgameT2Tank = "Eevee", EndgameT2D1 = "Jolteon", EndgameT2D2 = "",
+            EndgamePokeStopCmd = "!pokestop"
+        });
+        var offProf = new ProfileView(new BotProfile { EndgameEnabled = false, EndgameT1Tank = "Pikachu" });
+        Check(mod.Decide(sBase, offProf) is null, "EG H: disabled profile -> null");
+        var noBar = sBase with { Pokebar = System.Array.Empty<PokebarSlot>() };
+        Check(mod.Decide(noBar, onProf) is null && mod.Status.Contains("barra"), "EG H: no pokebar read -> silent arm");
+        var a = mod.Decide(sBase, onProf);
+        Check(a is { Channel: ActionChannel.Command, Payload: "summon:Pikachu:1" }, $"EG H: armed -> summon intent ({a?.Payload})");
+        var b = mod.Decide(sBase with { NowMs = 2001, ActivePokebarSlot = 1 }, onProf);
+        Check(b is { Channel: ActionChannel.Command, Payload: "eghold:donopoke" }, $"EG H: hold tick is a sentinel command ({b?.Payload})");
+        var mover = mod.Decide(sBase with { NowMs = 9000 }, onProf);
+        Check(mover != null, "EG H: the tick the module owns is never null");
     }
 }
 

@@ -236,6 +236,76 @@
                     <TextBox Text="{Binding VigiaDistThreshold, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
                 </StackPanel>
             </controls:CardControl>
+            <controls:CardControl x:Name="EndgameCard" Title="AUTO COMBO (END GAME)" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Rotação 2x3 sem revive: o tank 1 puxa a wave, para quando ela fecha em cima dele e da full combo; depois os danos 1 e 2 entram um a um. Quem desmaia é pulado - nunca reviver. Os nomes são procurados na pokebar: se aparecer dois iguais, o banco é pulado em vez de chutar."
+                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Ligar auto combo" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding EndgameEnabled}"
+                               Margin="0,0,0,12" />
+                    <WrapPanel Margin="0,0,0,4">
+                        <TextBlock Text="TIME 1 - TANK" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT1Tank, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,14,0" />
+                        <TextBlock Text="DANO 1" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT1D1, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,14,0" />
+                        <TextBlock Text="DANO 2" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT1D2, UpdateSourceTrigger=PropertyChanged}" Width="130" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,0,0,12">
+                        <TextBlock Text="TIME 2 - TANK" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT2Tank, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,14,0" />
+                        <TextBlock Text="DANO 1" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT2D1, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="0,0,14,0" />
+                        <TextBlock Text="DANO 2" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameT2D2, UpdateSourceTrigger=PropertyChanged}" Width="130" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,0,0,4">
+                        <TextBlock Text="WAVE ALVO" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameWaveCount, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="ANEL (TILES)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameRingTiles, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="PARAR AO VER" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSeeStop, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="PARAR AO COLAR (DIST)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameStopDist, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,0,0,4">
+                        <TextBlock Text="APROXIMAR ATE (SQM)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameApproachSqm, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="REPUXAR DEPOIS (S, 0 = SEMPRE)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameRelureS, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="GAP DE MOVES (MS)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameMoveGapMs, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="RE-COMBO MAX" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameReburst, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,0,0,4">
+                        <TextBlock Text="POTION (ID, 0 = NENHUMA)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgamePotItem, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="0,0,14,0" />
+                        <TextBlock Text="POTION ABAIXO (%)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgamePotPct, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="SOS DO TANK (%)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSavePct, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="TROCAR TANK ABAIXO (%)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSwapPct, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+                    </WrapPanel>
+                    <WrapPanel Margin="0,0,0,4">
+                        <TextBlock Text="SAFE SPOT X" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSafeX, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="Y" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSafeY, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="ALCANCE (TILES)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameSafeReach, UpdateSourceTrigger=PropertyChanged}" Width="60" Margin="0,0,14,0" />
+                        <TextBlock Text="COOLDOWN MAX (S)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,8,5" VerticalAlignment="Bottom" />
+                        <TextBox Text="{Binding EndgameRecoverMaxS, UpdateSourceTrigger=PropertyChanged}" Width="60" />
+                    </WrapPanel>
+                    <CheckBox Content="Trocar os times passando pelo safe spot (desmarque para trocar no lugar)" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding EndgameUseSafe}"
+                               Margin="0,8,0,8" />
+                    <CheckBox Content="Falar !pokestop para os danos não andarem" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding EndgamePokeStop}"
+                               Margin="0,0,0,12" />
+                    <TextBlock Text="COMANDO NO CHAT (QUANDO LIGADO)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding EndgamePokeStopCmd, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+            </controls:CardControl>
             <controls:CardControl x:Name="DiagnoseCard" Title="DIAGNÓSTICO" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Conferência do que falta para cada recurso funcionar. Não muda comportamento, só mostra."

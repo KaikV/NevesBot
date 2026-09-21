@@ -26,6 +26,7 @@
     <Compile Include="..\KBot.App\BotBrain\FishingGate.cs" Link="FishingGate.cs" />
     <Compile Include="..\KBot.App\BotBrain\AntiafkDetect.cs" Link="AntiafkDetect.cs" />
     <Compile Include="..\KBot.App\BotBrain\VigiaDetect.cs" Link="VigiaDetect.cs" />
+    <Compile Include="..\KBot.App\BotBrain\EndgameDetect.cs" Link="EndgameDetect.cs" />
     <Compile Include="..\KBot.App\BotBrain\ActionIntent.cs" Link="ActionIntent.cs" />
     <Compile Include="..\KBot.App\BotBrain\IBotModule.cs" Link="IBotModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\ProfileView.cs" Link="ProfileView.cs" />

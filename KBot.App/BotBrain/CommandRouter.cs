@@ -44,6 +44,8 @@ public sealed class ProfileCommandResolver : ICommandResolver
         "catch" => "capturar",
         "loot" => "coletar",
         "fish" => "pesca",
+        "eghold" => "END GAME dono do poke (fase do combo em andamento)",
+        "pokestop" => "falar !pokestop no chat (aguarda canal de chat)",
         _ => $"comando {command.Payload}"
     };
 

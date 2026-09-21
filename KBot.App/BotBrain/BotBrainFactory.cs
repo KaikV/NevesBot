@@ -20,6 +20,7 @@ public static class BotBrainFactory
             new VigiaModule(),
             new HealingModule(),
             new SocorroModule(),
+            new EndgameModule(),
             new TargetingModule(),
             new CatchModule(),
             new LootModule(),

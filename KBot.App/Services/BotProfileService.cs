@@ -125,6 +125,31 @@ public static class BotProfileService
         profile.AntiAfkIdleSeconds = Math.Max(15, profile.AntiAfkIdleSeconds);
         // 2 = the floor VigiaTracker applies (a 1-tile jump is a step, never a pull).
         profile.VigiaDistThreshold = Math.Max(2, profile.VigiaDistThreshold);
+        // Endgame knobs (literals, same style as above): counts are at least 1,
+        // the potion item is 0 (off) or a real server id (>= 100), percentages 0..100.
+        profile.EndgameT1Tank = profile.EndgameT1Tank?.Trim() ?? string.Empty;
+        profile.EndgameT1D1 = profile.EndgameT1D1?.Trim() ?? string.Empty;
+        profile.EndgameT1D2 = profile.EndgameT1D2?.Trim() ?? string.Empty;
+        profile.EndgameT2Tank = profile.EndgameT2Tank?.Trim() ?? string.Empty;
+        profile.EndgameT2D1 = profile.EndgameT2D1?.Trim() ?? string.Empty;
+        profile.EndgameT2D2 = profile.EndgameT2D2?.Trim() ?? string.Empty;
+        profile.EndgameWaveCount = Math.Max(1, profile.EndgameWaveCount);
+        profile.EndgameRingTiles = Math.Max(1, profile.EndgameRingTiles);
+        profile.EndgameSeeStop = Math.Max(1, profile.EndgameSeeStop);
+        profile.EndgameStopDist = Math.Max(1, profile.EndgameStopDist);
+        profile.EndgameApproachSqm = Math.Max(1, profile.EndgameApproachSqm);
+        profile.EndgameRelureS = Math.Max(0, profile.EndgameRelureS);
+        profile.EndgameMoveGapMs = Math.Max(60, profile.EndgameMoveGapMs);
+        profile.EndgamePotItem = profile.EndgamePotItem >= 100 ? profile.EndgamePotItem : 0;
+        profile.EndgamePotPct = Math.Clamp(profile.EndgamePotPct, 1, 100);
+        profile.EndgameSavePct = Math.Clamp(profile.EndgameSavePct, 0, 100);
+        profile.EndgameSwapPct = Math.Clamp(profile.EndgameSwapPct, 0, 100);
+        profile.EndgameSafeReach = Math.Max(0, profile.EndgameSafeReach);
+        profile.EndgameRecoverMaxS = Math.Max(0, profile.EndgameRecoverMaxS);
+        profile.EndgameReburst = Math.Max(0, profile.EndgameReburst);
+        profile.EndgamePokeStopCmd = profile.EndgamePokeStopCmd?.Trim() ?? "!pokestop";
+        profile.EndgameSafeX = Math.Max(0, profile.EndgameSafeX);
+        profile.EndgameSafeY = Math.Max(0, profile.EndgameSafeY);
         return profile;
     }
 

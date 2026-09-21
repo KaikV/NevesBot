@@ -31,6 +31,14 @@ public static class ConfigDiagnosticsService
             items.Add(Ok("Anti AFK", $"Passo ao lado depois de {p.AntiAfkIdleSeconds}s parado — o tile ao lado ainda será lido do mapa quando a leitura de andar cair."));
         if (p.VigiaEnabled)
             items.Add(Ok("Vigia (puxao)", $"Salto de {p.VigiaDistThreshold}+ tiles sem motivo para alarmar — o proprio bot carimba voos/hunts, a morte carimba pelo chat, e o jogador pode ensinar pontos."));
+        if (p.EndgameEnabled)
+        {
+            var nomes = new[] { p.EndgameT1Tank, p.EndgameT1D1, p.EndgameT1D2, p.EndgameT2Tank, p.EndgameT2D1, p.EndgameT2D2 };
+            var ok = nomes.Count(n => !string.IsNullOrWhiteSpace(n));
+            items.Add(ok == 6
+                ? Ok("End Game (auto combo)", $"Rotação 2x3 sem revive: wave de {p.EndgameWaveCount}, potion {p.EndgamePotPct}%/save {p.EndgameSavePct}%/swap {p.EndgameSwapPct}%{(p.EndgameUseSafe ? ", troca por safe spot" : "")}. Troca/moves/cd ainda aguardam offset.")
+                : Warn("End Game (auto combo)", $"Só {ok} de 6 bancos nomeados — os vazios são pulados na rotação. Troca/moves/cd ainda aguardam offset."));
+        }
         if (p.AlertsEnabled)
             items.Add(Ok("Alertas", "Sinal de puxão/GM detectado pelo brain; entrega por Telegram ainda não conectada."));
         if (p.HotkeysEnabled)

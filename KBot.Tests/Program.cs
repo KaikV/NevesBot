@@ -312,12 +312,14 @@ RunSocorroChecks();
 
 static void RunSocorroChecks()
 {
+    // Helper: field also seeds ActiveAlive so "empty" reads as a dead active too.
+    // Note: null (unread) still means COVERED by design - see check D2.
     static GameState GS(long t, bool? field, int wilds, int? activeSlot,
         System.Collections.Generic.IReadOnlyList<PokebarSlot>? bar = null) => new()
     {
         ClientConnected = true, InGame = true, HasPosition = true, NowMs = t,
         FieldHasPoke = field, WildsNearby = wilds, ActivePokebarSlot = activeSlot,
-        ActiveAlive = field ?? false,
+        ActiveAlive = field ?? true,
         Pokebar = bar ?? System.Array.Empty<PokebarSlot>()
     };
     static PokebarSlot B(string name, double hp) => new(name, hp);
@@ -391,6 +393,16 @@ static void RunSocorroChecks()
         for (long t = 0; t < 3000; t += 100)
             Check(m.Decide(GS(t, false, 0, null), prof) is null, "Socorro never guesses without pokebar");
         Check(m.Status.Contains("sem leitura"), $"Status says why it idles ({m.Status})");
+    }
+
+    // D2) Unknown field (vision not reading yet) means COVERED, not empty: socorro must
+    //     stay idle and never toggle changePokemon on a blind screen (sofaPokeOut nil => fora ~= false).
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile { AutoSummon = true });
+        var bar = new[] { B("a", 50), B("b", 50) };
+        for (long t = 0; t < 5000; t += 100)
+            Check(m.Decide(GS(t, null, 0, 1, bar), prof) is null, "Socorro idle while field is unread");
     }
 
     // E) Full brain wiring: with AutoSummon off, ONLY socorro can send a poke out on an

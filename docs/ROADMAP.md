@@ -79,7 +79,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 | Potion (vida) | `main.lua:1068` | `useOnPokemon(item, -1)` quando `hp < threshold` | 🟧 `HealingModule` decide, sem HP real |
 | Medicine (status) | main | cura status abaixo de `CureAtPercent` | 🟧 idem |
 | Auto-revive | `main.lua:3112` | `requestPokebarReviveByItemId(item, slot)` quando poke morto na barra | 🟧 idem |
-| **Socorro** (nunca ficar sem poke) | `n9_socorro.lua` | Rede última linha: se há segundos sem NADA em campo (pelo mapa, não pela barra que mente), solta poke. Caso real: barra mostrava vivo (recolhido) e o auto-revive não agiu em poke não-morto → morreu em 20s | 🟧 parcial em HealingModule; falta o gatilho "sem poke em campo" |
+| **Socorro** (nunca ficar sem poke) | `n9_socorro.lua` | Rede última linha: se há segundos sem NADA em campo (pelo mapa, não pela barra que mente), solta poke. Caso real: barra mostrava vivo (recolhido) e o auto-revive não agiu em poke não-morto → morreu em 20s | ✅ decisão no SocorroModule (prioridade 95, teste headless); espera offset de pokebar para soltar no real |
 | Caixa-preta da vida | `n8_caixapreta.lua` | Fica calada até a vida CAIR; junta o episódio (dano seguido sem pausa 1,5s) e grava 1 linha: quanto perdeu, tempo, se havia poke, quantos selvagens, o que o bot fazia, quando cada socorro agiu | ⬜ (óimo p/ depurar cura) |
 
 ### Captura (aba Captura)
@@ -140,13 +140,18 @@ passou no teste headless e (quando depender de runtime) no seu Windows.
 - **Aceite:** app mostra posição viva igual ao minimap; INICIAR e GRAVAR ROTAM passam a andar.
 
 ### ETAPA 1 — Ler party + HP (destrava Cura/Socorro)
+- **Status:** **DECISÃO pronta** (commit `556a212`): `SocorroModule` + estado
+  `Pokebar/ActivePokebarSlot/FieldHasPoke/WildsNearby` no `GameState`; resolver já
+  mapeia `summon` → pendente (offset-bound). **Falta o transporte C++** — offsets de
+  pokebar/active ainda não existem (ETAPA 0 mostra o caminho: caçador de offset).
 - **Objetivo:** `Pokebar.GetPlayerPokeballs()` (name/health/uuid por slot) + `GetActiveSlot()`
   + HP do pokémon ativo.
 - **Como confiro:** `main.lua:3010` (`getPlayerPokeballs`), `n9_socorro.lua:108` (`vivo/morto`
   por slot), `main.lua:3044` (`getActiveSlot` é a fonte autoritativa de "quem tá em campo").
   Cross-check: barra **mente** (fica stale) → cruzar com HP da criatura SummonOwn no mapa.
-- **Aceite:** HealingModule usa HP real; teste headless com fake pokebar; no Windows o Socorro
-  solta poke quando o campo fica vazio.
+- **Aceite:** HealingModule usa HP real; teste headless com fake pokebar ✓ (A–E em
+  `RunSocorroChecks`); no Windows o Socorro solta poke quando o campo fica vazio
+  (espera calibração de offset para acender no real).
 
 ### ETAPA 2 — Ler criaturas na tela (varredura / visão)
 - **Objetivo:** `Map.GetSpectatorsInRange(center, rx, ry)` retornando Criatura com tipo/HP/pos.

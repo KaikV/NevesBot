@@ -59,7 +59,10 @@ public sealed class SocorroModule : IBotModule
     {
         if (!s.InGame) return null;
 
-        var pokeOnField = s.FieldHasPoke ?? (s.ActiveAlive == true);
+        // Unknown (vision not reading yet) means COVERED, not empty - exactly what
+        // sofaPokeOut() does (`fora ~= false` => reset). Acting while the screen is
+        // still unread would turn every blind boot into a changePokemon toggle storm.
+        bool pokeOnField = s.FieldHasPoke != false;
 
         if (pokeOnField)
         {

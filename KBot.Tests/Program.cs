@@ -247,6 +247,8 @@ var prof = new ProfileView(new BotProfile
         ReviveHp = 25,
         FishingHotkey = "Ctrl+Z",
         MedicineHotkey = "F11;curar~x", // chars needing escape
+        AntiAfkEnabled = true,
+        AntiAfkIdleSeconds = 50,
         MonstersToAttack = { "Mimikyu", "Pikachu" }
     };
     var code = ConfigShareService.Export(src);
@@ -263,6 +265,7 @@ var prof = new ProfileView(new BotProfile
     Check(dst.ActiveSlot == 3 && dst.CureAtPercent == 55 && dst.ReviveHp == 25, "Share import carries numbers");
     Check(dst.FishingHotkey == "Ctrl+Z", "Share import carries string");
     Check(dst.MedicineHotkey == "F11;curar~x", "Share import unescapes specials");
+    Check(dst.AntiAfkEnabled && dst.AntiAfkIdleSeconds >= 15, "Share import carries anti-AFK fields");
     Check(dst.MonstersToAttack.SequenceEqual(new[] { "Mimikyu", "Pikachu" }), "Share import carries monster list");
     Check(dst.AutoSummon == true, "Share import leaves unlisted field untouched");
 
@@ -315,6 +318,7 @@ RunTargetChecks();
 RunCatchChecks();
 RunAlertChecks();
 RunFishingChecks();
+RunAntiafkChecks();
 
 static void RunSocorroChecks()
 {
@@ -942,6 +946,119 @@ static void RunFishingChecks()
         // Enough time passes: next cast lands.
         var s4 = new GameState { ClientConnected = true, InGame = true, NowMs = 8000 };
         Check(mod.Decide(s4, p) is { Channel: ActionChannel.Command, Payload: "fish" }, "Module: next cast after cadence");
+    }
+}
+
+static void RunAntiafkChecks()
+{
+    const long T0 = 1_000_000;
+    static PokePos P(int x, int y) => new(x, y, 5);
+
+    // A) Nothing moves until the idle threshold passes (floor = 15s, config = 50s here).
+    {
+        var t = new AntiAfkTracker();
+        Check(t.Tick(T0, true, P(10, 10), false, null, null, 50) is null, "First tick: arms the clock");
+        for (long i = 1; i <= 49; i++)
+            Check(t.Tick(T0 + i * 1000, true, P(10, 10), false, null, null, 50) is null, $"Before 50s idle: silent (t+{i}s)");
+    }
+
+    // B) At the threshold it steps OUT one side and schedules the volta.
+    {
+        var t = new AntiAfkTracker();
+        t.Tick(T0, true, P(10, 10), false, null, null, 50);
+        Check(t.Tick(T0 + 50_000, true, P(10, 10), false, null, null, 50) is "RIGHT", "50s idle: first step goes right");
+        Check(t.Steps == 1, "Step counter advanced");
+    }
+
+    // C) The volta fires exactly at VoltaMs even before a re-armed idle could.
+    {
+        var t = new AntiAfkTracker();
+        t.Tick(T0, true, P(10, 10), false, null, null, 50);
+        t.Tick(T0 + 50_000, true, P(10, 10), false, null, null, 50);
+        Check(t.Tick(T0 + 50_000 + AntiAfkTracker.VoltaMs - 1, true, P(10, 10), false, null, null, 50) is null, "Volt a: not early");
+        Check(t.Tick(T0 + 50_000 + AntiAfkTracker.VoltaMs, true, P(10, 10), false, null, null, 50) is "LEFT", "Volta step back to the left");
+        Check(t.Steps == 1, "Volta does not count as a new trigger");
+    }
+
+    // D) Any real position change resets the clock (player or cavebot walking).
+    {
+        var t = new AntiAfkTracker();
+        for (int i = 0; i < 49; i++) t.Tick(T0 + i * 1000, true, P(10, 10), false, null, null, 50);
+        t.Tick(T0 + 49_000, true, P(11, 10), false, null, null, 50);   // walked: clock re-arms here
+        Check(t.Tick(T0 + 49_000 + 40_000, true, P(11, 10), false, null, null, 50) is null,
+            "Moved tile: full idle must elapse from the NEW tile");
+        Check(t.Tick(T0 + 49_000 + 50_000, true, P(11, 10), false, null, null, 50) is not null,
+            "Clock restarted: steps again after a full idle from the new tile");
+    }
+
+    // E) Busy: the clock keeps running but the step waits.
+    {
+        var t = new AntiAfkTracker();
+        t.Tick(T0, true, P(10, 10), false, null, null, 50);
+        t.Tick(T0 + 50_000, true, P(10, 10), true, null, null, 50);   // idle reached but busy
+        Check(true, "Busy at threshold held the step");
+        Check(t.Tick(T0 + 51_000, true, P(10, 10), false, null, null, 50) is not null,
+            "Once free again: steps without requiring another full idle");
+    }
+
+    // F) One side blocked -> flips; both blocked -> retries (resets the clock), no wall-push.
+    {
+        var t = new AntiAfkTracker();
+        t.Tick(T0, true, P(10, 10), false, null, false, 50);        // west blocked from the start
+        var d1 = t.Tick(T0 + 50_000, true, P(10, 10), false, null, false, 50);
+        Check(d1 == "RIGHT", $"West blocked: flips east (got '{d1}')");
+        Check(t.Steps == 1, "Out-step consumed");
+
+        var t2 = new AntiAfkTracker();
+        t2.Tick(T0, true, P(10, 10), false, null, null, 50);
+        t2.Tick(T0 + 50_000, true, P(10, 10), false, null, null, 50);   // out-step, volta pending
+        t2.Tick(T0 + 50_000 + AntiAfkTracker.VoltaMs, true, P(10, 10), false, null, null, 50); // volta
+        Check(t2.Steps == 1, "After out+volta: Steps==1 (volta doesn't count as a trigger)");
+        // Consume the re-arm (volta cleared _ult; this tick re-establishes the baseline).
+        t2.Tick(T0 + 50_000 + AntiAfkTracker.VoltaMs + 1, true, P(10, 10), false, null, null, 50);
+        // A full idle AFTER the re-arm: both sides blocked -> retry.
+        var blocked = t2.Tick(T0 + 50_000 + AntiAfkTracker.VoltaMs + 50_000 + 1, true, P(10, 10), false, false, false, 50);
+        Check(blocked is null, "Both sides blocked: no wall-push, retry later");
+        Check(t2.Steps == 2, "Blocked attempt still counted (side flipped for next try)");
+    }
+
+    // G) Alternates sides on each trigger.
+    {
+        var t = new AntiAfkTracker();
+        void Cycle(long baseT, bool eastOk, bool westOk)
+        {
+            t.Tick(baseT, true, P(10, 10), false, eastOk ? (bool?)true : null, westOk ? (bool?)true : null, 50);
+            var outDir = t.Tick(baseT + 50_000, true, P(10, 10), false, eastOk ? (bool?)true : null, westOk ? (bool?)true : null, 50);
+            var back = t.Tick(baseT + 50_000 + AntiAfkTracker.VoltaMs, true, P(10, 10), false, null, null, 50);
+            Check(outDir is "RIGHT" or "LEFT" && back is not null, $"Cycle moved out ({outDir}) and back ({back})");
+        }
+        Cycle(T0, true, true);
+        // Second cycle passes NULL walkability (both sides free) and waits a full idle.
+        t.Tick(T0 + 300_000, true, P(10, 10), false, null, null, 50);  // re-baseline
+        Check(t.Tick(T0 + 300_000 + 50_000 + 1, true, P(10, 10), false, null, null, 50) is "LEFT",
+            "Second trigger alternates to the other side");
+    }
+
+    // H) Offline clears all state; unknown walkability degrades to "free".
+    {
+        var t = new AntiAfkTracker();
+        t.Tick(T0, true, P(10, 10), false, null, null, 50);
+        t.Tick(T0 + 60_000, false, P(10, 10), false, null, null, 50);   // disconnected mid-idle
+        Check(t.Tick(T0 + 70_000, true, P(10, 10), false, null, null, 50) is null,
+            "Back online: clock restarts clean");
+    }
+
+    // I) Module wiring: profile gate, battle gate, in-game gate.
+    {
+        var mod = new AntiAfkModule();
+        var off = new ProfileView(new BotProfile());
+        var on = new ProfileView(new BotProfile { AntiAfkEnabled = true, AntiAfkIdleSeconds = 50 });
+        var s = new GameState { ClientConnected = true, InGame = true, HasPosition = true, X = 1, Y = 2, Z = 5, NowMs = T0 };
+        Check(mod.Decide(s, off) is null, "Module: disabled profile stays silent");
+        var sb = s with { InBattle = true };
+        Check(mod.Decide(sb, on) is null, "Module: battle holds the nudge");
+        var snp = s with { HasPosition = false };
+        Check(mod.Decide(snp, on) is null, "Module: no position read: silent");
     }
 }
 

@@ -60,6 +60,11 @@ public sealed class BotProfile
     public int ShinyBallId { get; set; }
     public bool LootEnabled { get; set; }
     public string LootHotkey { get; set; } = string.Empty;
+    // Anti-AFK (nL_antiafk.lua): a single sideways step when standing still, with the
+    // step-back scheduled right after. Off by default - most users move their char anyway.
+    public bool AntiAfkEnabled { get; set; }
+    // Seconds standing on one tile before the nudge (clamped to >= 15 in Normalize).
+    public int AntiAfkIdleSeconds { get; set; } = 50;
     public bool PmReplyEnabled { get; set; }
     public string PmPhrases { get; set; } = string.Empty; // CSV of vague replies (see PmResponderService.DefaultPhrases)
     public List<SpellSetting> Spells { get; set; } = new();

@@ -216,6 +216,16 @@
                     <TextBox Text="{Binding LootHotkey, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
                 </StackPanel>
             </controls:CardControl>
+            <controls:CardControl x:Name="AntiAfkCard" Title="ANTI AFK" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Depois de parado num tile por um tempo, o bot dá um passo ao lado e volta. O mínimo é 15 segundos (menos parece tremido, não gente)."
+                                Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Evitar desconexão por AFK" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding AntiAfkEnabled}"
+                               Margin="0,0,0,12" />
+                    <TextBlock Text="SEGUNDOS PARADO ATÉ O PASSO" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding AntiAfkIdleSeconds, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+            </controls:CardControl>
             <controls:CardControl x:Name="DiagnoseCard" Title="DIAGNÓSTICO" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="Conferência do que falta para cada recurso funcionar. Não muda comportamento, só mostra."

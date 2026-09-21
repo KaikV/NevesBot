@@ -55,6 +55,8 @@ public interface IProfileView
     int ShinyBallId { get; }
     bool LootEnabled { get; }
     string? LootHotkey { get; }
+    bool AntiAfkEnabled { get; }
+    int AntiAfkIdleSeconds { get; }
     IReadOnlyList<SpellSettingView> Spells { get; }
 }
 

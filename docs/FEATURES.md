@@ -12,6 +12,7 @@ tela no menu lateral. A tela **Configurações** reúne todas as opções e impo
 | Pesca | Preferência, ponto em pixels e atalho de pesca | Decisão de cadência pronta (ritmo do servidor, pausa por selvagens); pendente: leitura da vara e do ponto d'água |
 | Captura | Preferência e atalho | Decisão pronta (bola por corpo + shiny); pendente: leitura dos corpos na tela |
 | Coleta | Preferência e atalho | Pendente: reconhecimento dos objetos |
+| Anti AFK | Ativar e segundos parado até o passo | Decisão pronta (passo ao lado + volta agendada, alterna o lado); pendente: leitura de andar dos tiles ao lado |
 
 As opções são salvas em `%LOCALAPPDATA%\KBot\profile.json`. Salvar uma preferência não inicia
 automação. O núcleo C++ detecta o processo `PokeAlliance.exe` e responde a `PING` e `GET_STATUS`.

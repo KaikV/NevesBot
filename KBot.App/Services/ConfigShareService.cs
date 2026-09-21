@@ -54,6 +54,8 @@ public sealed class ConfigShareResult
         new("ck", p => p.CatchHotkey, (p, v) => p.CatchHotkey = (string?)v ?? ""),
         new("le", p => p.LootEnabled, (p, v) => p.LootEnabled = (bool)v),
         new("lk", p => p.LootHotkey, (p, v) => p.LootHotkey = (string?)v ?? ""),
+        new("ae", p => p.AntiAfkEnabled, (p, v) => p.AntiAfkEnabled = (bool)v),
+        new("ai", p => p.AntiAfkIdleSeconds, (p, v) => p.AntiAfkIdleSeconds = (int)v),
     };
 
     public static string Export(BotProfile profile)

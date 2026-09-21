@@ -186,23 +186,34 @@ public sealed class FishingModule : IBotModule
     }
 }
 
-// Port of nL_antiafk.lua. Lowest priority: a tiny periodic nudge so the session
-// never AFK-outs. Emits a move only when idle and far from any other activity.
+// Port of nL_antiafk.lua. Lowest priority: a single sideways step when the
+// character stands on one tile for too long, followed by the scheduled step back.
+// The idle clock, volta scheduling, side alternation and both-sides-blocked retry
+// live in AntiafkTracker (AntiafkDetect.cs). Walkability of the side tiles is not
+// readable yet (null = "free", matching the Lua default), and "busy" stays false
+// until a cross-feature hold flag lands.
 public sealed class AntiAfkModule : IBotModule
 {
     public string Name => "AntiAfk";
     public int Priority => 1;
 
-    private long _lastNudgeMs;
-    private bool _nudgeLeftNext = true;
+    private readonly AntiAfkTracker _tracker = new();
+
+    public string Status { get; private set; } = "";
 
     public ActionIntent? Decide(GameState s, IProfileView p)
     {
-        if (!s.InGame || s.InBattle == true) return null;
-        // Only nudge once a minute, and skip while route/combat clearly owns moves.
-        if (s.NowMs - _lastNudgeMs < 60_000) return null;
-        _lastNudgeMs = s.NowMs;
-        _nudgeLeftNext = !_nudgeLeftNext;
-        return ActionIntent.Move(_nudgeLeftNext ? "LEFT" : "RIGHT");
+        if (!p.AntiAfkEnabled || !s.InGame || !s.HasPosition || s.InBattle == true)
+            return null;
+
+        var dir = _tracker.Tick(
+            s.NowMs, online: true,
+            pos: new PokePos(s.X, s.Y, s.Z),
+            busy: false,
+            eastOk: null, westOk: null,
+            idleSeconds: p.AntiAfkIdleSeconds);
+
+        if (dir != null) return ActionIntent.Move(dir);
+        return null;
     }
 }

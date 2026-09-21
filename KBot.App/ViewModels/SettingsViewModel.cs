@@ -59,6 +59,8 @@ public sealed class SettingsViewModel : ObservableObject
     private string _catchHotkey = string.Empty;
     private bool _lootEnabled;
     private string _lootHotkey = string.Empty;
+    private bool _antiAfkEnabled;
+    private string _antiAfkIdleSeconds = "50";
     private bool _pmReplyEnabled;
     private string _pmPhrases = string.Empty;
     private readonly NativeService _nativeService = new();
@@ -104,6 +106,8 @@ public sealed class SettingsViewModel : ObservableObject
     public string CatchHotkey { get => _catchHotkey; set => Set(ref _catchHotkey, value); }
     public bool LootEnabled { get => _lootEnabled; set => Set(ref _lootEnabled, value); }
     public string LootHotkey { get => _lootHotkey; set => Set(ref _lootHotkey, value); }
+    public bool AntiAfkEnabled { get => _antiAfkEnabled; set => Set(ref _antiAfkEnabled, value); }
+    public string AntiAfkIdleSeconds { get => _antiAfkIdleSeconds; set => Set(ref _antiAfkIdleSeconds, value); }
     public bool PmReplyEnabled { get => _pmReplyEnabled; set => Set(ref _pmReplyEnabled, value); }
     public string PmPhrases { get => _pmPhrases; set => Set(ref _pmPhrases, value); }
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
@@ -202,6 +206,11 @@ public sealed class SettingsViewModel : ObservableObject
             Feedback = "O ID do ponto de pesca deve ser um número inteiro maior que zero.";
             return null;
         }
+        if (!int.TryParse(AntiAfkIdleSeconds, out var antiAfkIdleSeconds) || antiAfkIdleSeconds < 15)
+        {
+            Feedback = "O tempo de inatividade do anti-AFK deve ser um número inteiro de segundos maior ou igual a 15.";
+            return null;
+        }
         if (CureAtPercent < 0 || CureAtPercent > 100)
         {
             Feedback = "O limite de cura deve estar entre 0 e 100.";
@@ -260,6 +269,8 @@ public sealed class SettingsViewModel : ObservableObject
             CatchHotkey = CatchHotkey,
             LootEnabled = LootEnabled,
             LootHotkey = LootHotkey,
+            AntiAfkEnabled = AntiAfkEnabled,
+            AntiAfkIdleSeconds = antiAfkIdleSeconds,
             PmReplyEnabled = PmReplyEnabled,
             PmPhrases = PmPhrases,
             Spells = spells
@@ -403,6 +414,8 @@ public sealed class SettingsViewModel : ObservableObject
         CatchHotkey = profile.CatchHotkey;
         LootEnabled = profile.LootEnabled;
         LootHotkey = profile.LootHotkey;
+        AntiAfkEnabled = profile.AntiAfkEnabled;
+        AntiAfkIdleSeconds = profile.AntiAfkIdleSeconds.ToString();
         PmReplyEnabled = profile.PmReplyEnabled;
         PmPhrases = profile.PmPhrases;
     }

@@ -46,6 +46,8 @@ public sealed class ProfileView : IProfileView
     public int ShinyBallId => _p.ShinyBallId;
     public bool LootEnabled => _p.LootEnabled;
     public string? LootHotkey => _p.LootHotkey;
+    public bool AntiAfkEnabled => _p.AntiAfkEnabled;
+    public int AntiAfkIdleSeconds => _p.AntiAfkIdleSeconds;
     public IReadOnlyList<SpellSettingView> Spells =>
         _p.Spells.Where(s => !string.IsNullOrWhiteSpace(s.Key))
                  .Select(s => new SpellSettingView(s.Key, s.Enabled, s.CooldownSeconds)).ToList();

@@ -1,3 +1,4 @@
+using KBot.App.BotBrain;
 using KBot.App.Models;
 using System;
 using System.Collections.Generic;
@@ -119,6 +120,9 @@ public static class BotProfileService
         profile.FishingDelaySeconds = Math.Max(1, profile.FishingDelaySeconds);
         profile.CatchHotkey = profile.CatchHotkey?.Trim() ?? string.Empty;
         profile.LootHotkey = profile.LootHotkey?.Trim() ?? string.Empty;
+        // 15 = AntiAfkTracker.IdleMinSeconds (kept as a literal: the Models->BotBrain
+        // reference direction is not allowed here).
+        profile.AntiAfkIdleSeconds = Math.Max(15, profile.AntiAfkIdleSeconds);
         return profile;
     }
 

@@ -116,7 +116,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 | Shiny ícone | `n7_shiny_icone.lua` | `setActivatedShinyIcon(true)` + detecção visual | ⬜ |
 | Guild daily | `nH_guild.lua` | `sendGuildResetDaily`, `sendGuildRequestData`, `sendDailyQuestSelection` | ⬜ |
 | Voar | `nA_voar.lua` | `flyAction` + `onFlyControlsChange` | ⬜ |
-| Antiafk | `nL_antiafk.lua` | movimento aleatório sutil pra não cair | ⬜ |
+| Antiafk | `nL_antiafk.lua` | passo ao lado após ficar parado + volta agendada; alterna o lado; não anda contra parede; freio de ocupado (combo/mercado) | ✅ `AntiAfkTracker` (puro, testado) + `AntiAfkModule`; walkability dos tiles ainda é leitura pendente (degrada p/ livre) |
 | Remoto | `nF_remoto.lua`, `0_A2_remoto` | estado resumido via pacote (level, pos, hp) | ⬜ |
 | Hotkeys | `zz_hotkeys.lua` | atalhos globais (último a carregar) | 🟧 |
 | Idioma | `0_A0_idioma.lua` | i18n PT/EN (1833 refs) | ✅ (UI já em PT) |

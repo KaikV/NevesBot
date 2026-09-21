@@ -86,8 +86,8 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 ### Captura (aba Captura)
 | Feature | Fonte | Como funciona | KBot |
 | --- | --- | --- | --- |
-| Catch shiny | `0_AB_catch.lua` | Criatura morrendo cujo nome começa com prefixo shiny (shiny/ancient/elder/giant) → bola shiny | ⬜ |
-| Catch por corpse | `0_AB_catch.lua` | Lista `{nome, corpseId, ballId}`; quando corpse do id aparece no tile, usa a bola (`useWith(ball, corpse, 0)`) | ⬜ |
+| Catch shiny | `0_AB_catch.lua` | Criatura morrendo cujo nome começa com prefixo shiny (shiny/ancient/elder/giant) → bola shiny | ✅ decisão no CatchSelection.cs (substring no nome + janela de morte); transport do corpse ainda falta |
+| Catch por corpse | `0_AB_catch.lua` | Lista `{nome, corpseId, ballId}`; quando corpse do id aparece no tile, usa a bola (`useWith(ball, corpse, 0)`) | ✅ decisão (exata por id + só se EU matei + bola ≥100) em CatchSelection.cs; CatchModule emite `catch:bola:<id>` ou silêncio |
 
 ### Pesca (aba Pesca)
 | Feature | Fonte | Como funciona | KBot |

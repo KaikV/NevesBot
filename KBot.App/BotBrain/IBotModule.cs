@@ -45,6 +45,9 @@ public interface IProfileView
     string? FishingHotkey { get; }
     bool CatchEnabled { get; }
     string? CatchHotkey { get; }
+    IReadOnlyList<CatchEntry> CatchEntries { get; }
+    bool CatchShinyEnabled { get; }
+    int ShinyBallId { get; }
     bool LootEnabled { get; }
     string? LootHotkey { get; }
     IReadOnlyList<SpellSettingView> Spells { get; }

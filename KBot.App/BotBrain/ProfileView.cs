@@ -36,6 +36,9 @@ public sealed class ProfileView : IProfileView
     public string? FishingHotkey => _p.FishingHotkey;
     public bool CatchEnabled => _p.CatchEnabled;
     public string? CatchHotkey => _p.CatchHotkey;
+    public IReadOnlyList<CatchEntry> CatchEntries => _p.CatchEntries;
+    public bool CatchShinyEnabled => _p.CatchShinyEnabled;
+    public int ShinyBallId => _p.ShinyBallId;
     public bool LootEnabled => _p.LootEnabled;
     public string? LootHotkey => _p.LootHotkey;
     public IReadOnlyList<SpellSettingView> Spells =>

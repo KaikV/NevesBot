@@ -312,6 +312,7 @@ RunSocorroChecks();
 RunScanChecks();
 RunWalkChecks();
 RunTargetChecks();
+RunCatchChecks();
 
 static void RunSocorroChecks()
 {
@@ -635,6 +636,77 @@ static void RunTargetChecks()
             "No target on an empty screen");
     }
 }
+
+static void RunCatchChecks()
+{
+    IReadOnlyList<string> words = new[] { "shiny" };
+    IReadOnlyList<CatchEntry> none = Array.Empty<CatchEntry>();
+
+    // A) Explicit per-pokemon line wins: exact corpse id + a real ball bound -> throw it.
+    {
+        var e = new[] { new CatchEntry("Gengar", 20011, 25001) };
+        var d = CatchSelection.Evaluate(20011, "corpse", 100, -1, e, true, true, 12345, words);
+        Check(d.Throw && d.BallId == 25001, $"Custom corpse line throws its ball (got {d})");
+    }
+
+    // B) A matched line that has NO real ball bound must NOT throw (id < 100 = missing).
+    {
+        var e = new[] { new CatchEntry("Empty", 20011, 0) };
+        var d = CatchSelection.Evaluate(20011, "corpse", 100, -1, e, true, true, 12345, words);
+        Check(!d.Throw, $"Line without a bound ball does not throw (got {d})");
+    }
+
+    // C) A corpse with no fresh MY-kill behind it is someone else's -> no ball. This is
+    //    what stops the server-reject loop that leaves corpses on the floor forever.
+    {
+        var e = new[] { new CatchEntry("Gengar", 20011, 25001) };
+        Check(!CatchSelection.Evaluate(20011, "corpse", -1, -1, e, true, true, 12345, words).Throw, "Foreign corpse: no ball");
+        Check(!CatchSelection.Evaluate(20011, "corpse", 99999, -1, e, true, true, 12345, words).Throw, "Stale kill mark: no ball");
+    }
+
+    // D) Shiny by NAME: our shiny died here recently -> shiny ball, any corpse id. The
+    //    name match is a case-insensitive substring so "Shiny Mawile [169]" works.
+    {
+        var d = CatchSelection.Evaluate(999, "Shiny Mawile [169]", -1, 500, none, false, true, 12345, words);
+        Check(d.Throw && d.BallId == 12345, $"Shiny-by-name throws the shiny ball (got {d})");
+        // Without a recent shiny death the same name is just loot -> no throw.
+        Check(!CatchSelection.Evaluate(999, "Shiny Mawile [169]", -1, -1, none, false, true, 12345, words).Throw, "No shiny death: no ball");
+    }
+
+    // E) Shiny off, or no shiny ball bound -> the shiny path never fires.
+    {
+        Check(!CatchSelection.Evaluate(999, "Shiny Mawile [169]", -1, 500, none, false, false, 12345, words).Throw, "Shiny off: no ball");
+        Check(!CatchSelection.Evaluate(999, "Shiny Mawile [169]", -1, 500, none, false, true, 0, words).Throw, "No shiny ball bound: no ball");
+    }
+
+    // F) CatchModule wires the decision into intents: fresh corpse + mapped line ->
+    //    "catch:bola:<id>:<reason>"; a foreign corpse -> no intent at all (no spam).
+    {
+        var p = new ProfileView(new BotProfile
+        {
+            CatchEnabled = true,
+            CatchEntries = { new("Gengar", 20011, 25001) }
+        });
+        var mod = new CatchModule();
+        var fresh = new GameState
+        {
+            ClientConnected = true, InGame = true, NowMs = 1000,
+            CorpseId = 20011, CorpseName = "corpse", CorpseAppearedMs = 900
+        };
+        Check(mod.Decide(fresh, p) is { Channel: ActionChannel.Command, Payload: "catch:bola:25001:Gengar" },
+            $"Module throws the mapped ball for our fresh corpse (got {mod.Decide(fresh, p)})");
+
+        // Stale corpse (> MyDeathWindowMs since appearance) -> someone else's -> silent.
+        var stale = fresh with { CorpseAppearedMs = -9000 };
+        Check(mod.Decide(stale, p) is null, "Stale corpse: module stays silent");
+
+        // No corpse read but in battle -> old fallback keeps working.
+        var battle = new GameState { ClientConnected = true, InGame = true, NowMs = 1000, InBattle = true };
+        Check(mod.Decide(battle, p) is { Channel: ActionChannel.Command, Payload: "catch" },
+            "No corpse read: falls back to the battle binding");
+    }
+}
+
 
 
 

@@ -30,6 +30,15 @@ public sealed record GameState
     public double? ActiveHpPercent { get; init; } // our active pokemon hp (0..100), null if unknown
     public bool? ActiveAlive { get; init; }     // null if unknown; false => fainted
 
+    // A creature that just dropped its corpse at our tile (ETAPA: captura). The id is
+    // the corpse item id the vision reader reported; the names are display strings.
+    // A null CorpseId means "no corpse to evaluate this tick". A creature's corpse
+    // appears ~when it dies, so the age of this appearance is our "how long ago did
+    // something die here" signal (CatchSelection windows are evaluated against it).
+    public int? CorpseId { get; init; }
+    public string? CorpseName { get; init; }
+    public long CorpseAppearedMs { get; init; }   // wall clock of the corpse appearance
+
     // Party / pokebar (ETAPA 1). Empty list = we cannot read it yet, so modules
     // that need the party degrade gracefully instead of guessing a slot.
     // Mirrors modules.game_pokebar.getPlayerPokeballs(). The pokebar is a local

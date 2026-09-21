@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using KBot.App.BotBrain;
 
 namespace KBot.App.Models;
 
@@ -40,6 +41,11 @@ public sealed class BotProfile
     public int FishingY { get; set; }
     public bool CatchEnabled { get; set; }
     public string CatchHotkey { get; set; } = string.Empty;
+    // Per-pokemon catch lines (0_AB_catch.lua): map a corpse item id to a ball id.
+    // A ball id under 100 means "no real ball bound" and that line never throws.
+    public List<KBot.App.BotBrain.CatchEntry> CatchEntries { get; set; } = new();
+    public bool CatchShinyEnabled { get; set; }
+    public int ShinyBallId { get; set; }
     public bool LootEnabled { get; set; }
     public string LootHotkey { get; set; } = string.Empty;
     public bool PmReplyEnabled { get; set; }

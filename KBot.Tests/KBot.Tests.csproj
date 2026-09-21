@@ -35,6 +35,7 @@
     <Compile Include="..\KBot.App\BotBrain\BrainActionSink.cs" Link="BrainActionSink.cs" />
     <Compile Include="..\KBot.App\BotBrain\CommandRouter.cs" Link="CommandRouter.cs" />
     <Compile Include="..\KBot.App\BotBrain\GameStateProvider.cs" Link="GameStateProvider.cs" />
+    <Compile Include="..\KBot.App\BotBrain\ScreenScanSource.cs" Link="ScreenScanSource.cs" />
     <Compile Include="..\KBot.App\BotBrain\BotBrain.cs" Link="BotBrain.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\HealingModule.cs" Link="HealingModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\SocorroModule.cs" Link="SocorroModule.cs" />

@@ -396,6 +396,7 @@ static string ConfigShareServiceChecksumHelper(string body)
 RunPmChecks();
 RunSocorroChecks();
 RunScanChecks();
+RunScanSourceChecks();
 RunWalkChecks();
 RunTargetChecks();
 RunCatchChecks();
@@ -597,6 +598,41 @@ static void RunScanChecks()
             "No scan => unknown (null), never a guessed zero");
     }
 }
+
+static void RunScanSourceChecks()
+{
+    // E) The transport seam: with no source wired the lifecycle path reads UNKNOWN
+    //    (not a guessed empty screen) - exactly today's production behaviour. Wiring a
+    //    creature source lights up EnemyCount/FieldHasPoke with zero brain changes.
+    {
+        var ready = new NativeStatus { NativeOnline = true, ClientFound = true, HasPosition = true, PosX = 0, PosY = 0, PosZ = 0 };
+        var presence = CharacterPresence.InGame;
+
+        var none = new NoScreenScanSource();
+        Check(none.GetScan(ready, presence) is null, "Default source reports no scan (UNKNOWN)");
+
+        // A live transport re-reads each tick and runs the pure decision layer over it.
+        var creatures = new List<ScannedCreature> { new(1, 80, 1, 0, 0), new(1, 40, 2, 1, 0), new(3, 60, 0, 0, 0) };
+        IScreenScanSource live = ScreenScanSource.FromCreatures(() => creatures);
+        var read = live.GetScan(ready, presence);
+        var r = read as ScanResult;
+        Check(read is { HasRead: true } && r is not null, "Wired source returns a real read");
+        Check(r!.Wilds.Count == 2 && r.MyPoke is not null && r.PokeOnField(),
+            "Wired source separates wilds from the live own poke");
+
+        // End-to-end: provider + injected source => the fields the modules trust.
+        var state = GameStateProvider.From(ready, presence, 1000, live.GetScan(ready, presence));
+        Check(state.EnemyCount == 2 && state.FieldHasPoke == true && state.HasScreenScan,
+            "Seam into provider yields EnemyCount + FieldHasPoke in one call");
+
+        // The Func is re-evaluated per tick: drop the wilds and the next read follows.
+        creatures.Clear();
+        var after = live.GetScan(ready, presence);
+        Check(after is not null && after!.Wilds.Count == 0 && !after.PokeOnField(),
+            "Wired source re-reads live memory on the next tick");
+    }
+}
+
 
 static void RunWalkChecks()
 {

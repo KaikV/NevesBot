@@ -219,6 +219,29 @@ namespace KBot.App.Services
         public Task<string?> ResetMemoryDumpAsync(CancellationToken cancellationToken = default) =>
             SendCommandAsync("DUMP_RESET", cancellationToken);
 
+        // Scans the whole main module for an exact adjacent int32 triple (x,y,z)
+        // - the minimap position. Returns raw JSON with a "candidates" array of
+        // 0x-offsets from the module base. Parse on the caller side. Uses a long
+        // timeout: a full-module scan touches many megabytes of memory.
+        public async Task<string?> ScanForPositionAsync(int x, int y, int z, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+                await client.ConnectAsync(timeout.Token);
+                using var writer = new StreamWriter(client, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
+                using var reader = new StreamReader(client, Encoding.UTF8, false, 1024, leaveOpen: true);
+                await writer.WriteLineAsync($"SCAN_POSITION {x} {y} {z}");
+                return await reader.ReadLineAsync(timeout.Token);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or IOException or TimeoutException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
         private static async Task<string?> SendCommandAsync(string command, CancellationToken cancellationToken)
         {
             try

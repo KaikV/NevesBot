@@ -231,6 +231,34 @@ void NamedPipeServer::HandleClient()
 		m_reader.ResetMemoryDump();
 		response = "RESET\n";
 	}
+	else if (request.rfind("SCAN_POSITION ", 0) == 0)
+	{
+		// SCAN_POSITION <x> <y> <z> -> JSON with candidate offsets from base.
+		std::istringstream input(request.substr(14));
+		int x = 0, y = 0, z = 0;
+		input >> x >> y >> z;
+		m_reader.Poll();
+
+		std::vector<unsigned long long> candidates;
+		unsigned long long scanned = 0;
+		std::string msg;
+		const bool ok = m_reader.TryScanForPosition(x, y, z, candidates, scanned, msg);
+
+		std::ostringstream ss;
+		ss << "{\"ok\":" << (ok ? "true" : "false")
+		   << ",\"count\":" << candidates.size()
+		   << ",\"scanned\":\"0x" << std::hex << std::uppercase << scanned << std::dec << "\"";
+		if (candidates.size() > 8) candidates.resize(8); // keep within the 4KB pipe frame
+		ss << ",\"candidates\":[";
+		for (size_t i = 0; i < candidates.size(); ++i)
+		{
+			if (i) ss << ",";
+			ss << "\"0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+			   << candidates[i] << std::dec << std::setfill(' ') << "\"";
+		}
+		ss << "],\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
 	else
 	{
 		response = "UNKNOWN\n";

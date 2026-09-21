@@ -4,6 +4,7 @@
 #include <string.h>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 #include <sstream>
 #include <iomanip>
 #include <windows.h>
@@ -210,6 +211,59 @@ public:
 		m_dumpRemaining = 0;
 	}
 
+	// Offset-hunting: scans the whole main module for an exact, contiguous
+	// int32 triple (x, y, z) - the minimap position read as three adjacent
+	// fields. Returns every match as an offset from the module base, so when
+	// the client updates and the confirmed offset breaks, the user types two
+	// different positions (before/after one step) and the surviving candidate
+	// is the real one.
+	bool TryScanForPosition(int x, int y, int z,
+	                        std::vector<unsigned long long>& offsetsFromBase,
+	                        unsigned long long& scannedBytes,
+	                        std::string& message) noexcept
+	{
+		offsetsFromBase.clear();
+		scannedBytes = 0;
+		if (m_pid == 0 || m_readHandle == INVALID_HANDLE_VALUE)
+		{
+			message = "Sem handle de leitura.";
+			return false;
+		}
+		ULONG_PTR base = 0;
+		SIZE_T size = 0;
+		if (!ResolveModule(base, size))
+		{
+			message = "Base ou tamanho do modulo principal nao encontrados.";
+			return false;
+		}
+		const unsigned char xb[4] = { unsigned char(x), unsigned char(x >> 8), unsigned char(x >> 16), unsigned char(x >> 24) };
+		const unsigned char yb[4] = { unsigned char(y), unsigned char(y >> 8), unsigned char(y >> 16), unsigned char(y >> 24) };
+		const unsigned char zb[4] = { unsigned char(z), unsigned char(z >> 8), unsigned char(z >> 16), unsigned char(z >> 24) };
+		const SIZE_T chunk = SIZE_T(64) * 1024;
+		std::vector<unsigned char> buffer(chunk + 8);
+		for (SIZE_T start = 0; start < size && offsetsFromBase.size() < 24; start += chunk)
+		{
+			const SIZE_T count = std::min(chunk + 8, size - start);
+			if (count < 12) break;
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(base + start), buffer.data(), count))
+				continue;
+			scannedBytes += 64 * 1024;
+			for (SIZE_T i = 0; i + 12 <= count; i += 4)
+			{
+				if (memcmp(buffer.data() + i, xb, 4) == 0 &&
+					memcmp(buffer.data() + i + 4, yb, 4) == 0 &&
+					memcmp(buffer.data() + i + 8, zb, 4) == 0)
+				{
+					unsigned long long address = reinterpret_cast<unsigned long long>(base + start) + i;
+					if (std::find(offsetsFromBase.begin(), offsetsFromBase.end(), address) == offsetsFromBase.end())
+						offsetsFromBase.push_back(address - base);
+				}
+			}
+		}
+		message = "Escaneado modulo inteiro.";
+		return true;
+	}
+
 private:
 	unsigned int m_pid = 0;
 	HANDLE m_readHandle = INVALID_HANDLE_VALUE;
@@ -243,10 +297,23 @@ private:
 	bool ResolveBase()
 	{
 		if (m_baseAddress != 0) return true;
+		ULONG_PTR base = 0;
+		SIZE_T size = 0;
+		if (!ResolveModule(base, size)) return false;
+		m_baseAddress = base;
+		return m_baseAddress != 0;
+	}
+
+	// Resolves the main module's base address and declared size. Prefers the
+	// module whose image name matches the attached process; falls back to the
+	// first non-Unknown module with a known base.
+	bool ResolveModule(ULONG_PTR& baseOut, SIZE_T& sizeOut) const
+	{
 		HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, m_pid);
 		if (snap == INVALID_HANDLE_VALUE) return false;
 		bool found = false;
 		ULONG_PTR fallback = 0;
+		SIZE_T fallbackSize = 0;
 		bool haveFallback = false;
 		MODULEENTRY32W entry;
 		entry.dwSize = sizeof(entry);
@@ -258,19 +325,21 @@ private:
 				if (!m_processName.empty() &&
 					_wcsicmp(exe.c_str(), std::wstring(m_processName.begin(), m_processName.end()).c_str()) == 0)
 				{
-					m_baseAddress = reinterpret_cast<ULONG_PTR>(entry.modBaseAddr);
+					baseOut = reinterpret_cast<ULONG_PTR>(entry.modBaseAddr);
+					sizeOut = entry.modBaseSize;
 					found = true;
 					break;
 				}
 				if (!haveFallback && exe != L"Unknown" && entry.modBaseAddr != nullptr)
 				{
 					fallback = reinterpret_cast<ULONG_PTR>(entry.modBaseAddr);
+					fallbackSize = entry.modBaseSize;
 					haveFallback = true;
 				}
 			} while (Module32NextW(snap, &entry));
 		}
 		CloseHandle(snap);
-		if (!found && haveFallback) m_baseAddress = fallback;
-		return m_baseAddress != 0;
+		if (!found && haveFallback) { baseOut = fallback; sizeOut = fallbackSize; }
+		return found || haveFallback;
 	}
 };

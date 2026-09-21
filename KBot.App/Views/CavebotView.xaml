@@ -148,6 +148,38 @@
                     </controls:CardControl>
                 </StackPanel>
             </Grid>
+
+            <controls:CardControl Title="CAÇADOR DE OFFSET (recalibrar após update do client)">
+                <StackPanel>
+                    <TextBlock Text="O minimap mostra sua posição exata. Digite-a abaixo e o núcleo varre a memória procurando essa tripla (X,Y,Z) adjacente. Use para redescobrir o offset quando o PokeAlliance é atualizado."
+                               Foreground="{DynamicResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="70" /><ColumnDefinition Width="70" /><ColumnDefinition Width="54" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Margin="0,0,8,0" Text="{Binding ScanX, UpdateSourceTrigger=PropertyChanged}" ToolTip="X" />
+                        <TextBox Grid.Column="1" Margin="0,0,8,0" Text="{Binding ScanY, UpdateSourceTrigger=PropertyChanged}" ToolTip="Y" />
+                        <TextBox Grid.Column="2" Margin="0,0,8,0" Text="{Binding ScanZ, UpdateSourceTrigger=PropertyChanged}" ToolTip="Z" />
+                        <Button Grid.Column="3" Command="{Binding ScanCommand}" IsEnabled="{Binding CanScan}">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                    <Setter Property="Content" Value="VARRER" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ScanRunning}" Value="True">
+                                            <Setter Property="Content" Value="VARRENDO..." />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+                    <Border Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1"
+                            Padding="10" Margin="0,10,0,0" MinHeight="64">
+                        <TextBox Text="{Binding ScanResult, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap"
+                                 FontFamily="Consolas" FontSize="12" Foreground="{DynamicResource PrimaryText}"
+                                 Background="Transparent" BorderThickness="0" VerticalScrollBarVisibility="Auto" />
+                    </Border>
+                </StackPanel>
+            </controls:CardControl>
+
             <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,14,0,0" />
         </StackPanel>
     </ScrollViewer>

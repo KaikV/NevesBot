@@ -24,6 +24,13 @@ public sealed class CavebotViewModel : ObservableObject
     private readonly NativeService _nativeService = new();
     private readonly CavebotNavigator _navigator;
 
+    // Offset-hunting (re-calibrate after a client update). The minimap shows the
+    // exact position; typing it here scans the module for that int32 triple.
+    private string _scanX = string.Empty;
+    private string _scanY = string.Empty;
+    private string _scanZ = string.Empty;
+    private bool _scanRunning;
+
     public ObservableCollection<CavebotWaypoint> Waypoints { get; } = new();
     public Array Actions => Enum.GetValues<WaypointAction>();
     public CavebotWaypoint? SelectedWaypoint { get => _selectedWaypoint; set { Set(ref _selectedWaypoint, value); OnPropertyChanged(nameof(HasSelection)); } }
@@ -41,6 +48,14 @@ public sealed class CavebotViewModel : ObservableObject
     public bool CanStartRoute => _navigator is { IsRunning: false } && HasWaypoints;
     public bool RouteRunning => _navigator.IsRunning;
 
+    public string ScanX { get => _scanX; set { Set(ref _scanX, value); OnPropertyChanged(nameof(CanScan)); } }
+    public string ScanY { get => _scanY; set { Set(ref _scanY, value); OnPropertyChanged(nameof(CanScan)); } }
+    public string ScanZ { get => _scanZ; set { Set(ref _scanZ, value); OnPropertyChanged(nameof(CanScan)); } }
+    public string ScanResult { get; private set; } = "";
+    public bool ScanRunning { get => _scanRunning; private set { Set(ref _scanRunning, value); OnPropertyChanged(nameof(CanScan)); } }
+    public bool CanScan => !ScanRunning &&
+        int.TryParse(ScanX, out int x) && int.TryParse(ScanY, out int y) && int.TryParse(ScanZ, out int z);
+
     public ICommand ImportCommand { get; private set; } = null!;
     public ICommand SaveCommand { get; private set; } = null!;
     public ICommand AddCommand { get; private set; } = null!;
@@ -53,6 +68,7 @@ public sealed class CavebotViewModel : ObservableObject
     public ICommand StepRightCommand { get; private set; } = null!;
     public ICommand StartRouteCommand { get; private set; } = null!;
     public ICommand StopRouteCommand { get; private set; } = null!;
+    public ICommand ScanCommand { get; private set; } = null!;
 
     public CavebotViewModel()
     {
@@ -77,6 +93,7 @@ public sealed class CavebotViewModel : ObservableObject
         StepRightCommand = new RelayCommand(async _ => await StepAsync("RIGHT"));
         StartRouteCommand = new RelayCommand(_ => StartRouteAsync(), _ => CanStartRoute);
         StopRouteCommand = new RelayCommand(_ => StopRoute(), _ => _navigator.IsRunning);
+        ScanCommand = new RelayCommand(async _ => await ScanAsync());
         RaiseRouteState();
     }
 
@@ -117,6 +134,63 @@ public sealed class CavebotViewModel : ObservableObject
         Feedback = sent
             ? $"Passo {key} enviado. O cliente precisa estar aberto e focado no controle de teclado."
             : "Não foi possível enviar o passo. Inicie o núcleo e abra o PokeAlliance primeiro.";
+    }
+
+    private async Task ScanAsync()
+    {
+        if (!int.TryParse(ScanX, out int x) || !int.TryParse(ScanY, out int y) || !int.TryParse(ScanZ, out int z))
+        {
+            ScanResult = "Digite as três coordenadas exatas do minimap (ex.: 2079 / 2037 / 7).";
+            return;
+        }
+
+        ScanRunning = true;
+        ScanResult = "Varrendo o módulo inteiro procurando essa tripla... pode levar uns segundos.";
+
+        try
+        {
+            string? raw = await _nativeService.ScanForPositionAsync(x, y, z);
+            ScanResult = FormatScanResult(raw, x, y, z);
+        }
+        finally
+        {
+            ScanRunning = false;
+        }
+    }
+
+    private static string FormatScanResult(string? raw, int x, int y, int z)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "O núcleo não respondeu. Inicie o núcleo e garanta que o PokeAlliance está aberto.";
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            bool ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == System.Text.Json.JsonValueKind.True;
+            long count = root.TryGetProperty("count", out var countEl) ? countEl.GetInt64() : 0;
+            var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : string.Empty;
+
+            if (!ok)
+                return $"Falha no varredura: {message}";
+
+            if (count == 0)
+                return $"Nenhuma tripla ({x},{y},{z}) encontrada. Confirme que as coordenadas do minimap estão exatas e tente em outro ponto do mapa.";
+
+            if (!root.TryGetProperty("candidates", out var cands) || cands.ValueKind != System.Text.Json.JsonValueKind.Array)
+                return $"Encontrada {count} ocorrência(s), mas a lista de endereços veio vazia.";
+
+            var lines = new System.Collections.Generic.List<string> { $"Tripla ({x},{y},{z}) encontrada {count} vez(es). Endereços candidatos (offset da base):" };
+            foreach (var c in cands.EnumerateArray())
+                lines.Add($"  {c.GetString()}");
+            lines.Add("");
+            lines.Add("Teste: ande 1 passo e rode o scan de novo com a NOVA posição. O offset que SURVIVERE entre os dois scans é o correto.");
+            return string.Join(Environment.NewLine, lines);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return $"Resposta inesperada do núcleo:\n{raw}";
+        }
     }
 
     private void Import()

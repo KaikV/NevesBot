@@ -17,6 +17,7 @@ namespace KBot.App.Services
         private const string PipeName = "KBot.NativePipe.CharacterV3";
         private Process? _ownedCore;
         public string? LastStatusError { get; private set; }
+        public string? LastProcessName { get; private set; }
 
         public string StartCore()
         {
@@ -159,6 +160,7 @@ namespace KBot.App.Services
                 }
                 var status = JsonSerializer.Deserialize<NativeStatus>(resp);
                 LastStatusError = status is null ? "Status vazio do núcleo." : null;
+                if (status is { ProcessName.Length: > 0 }) LastProcessName = status.ProcessName;
                 return status;
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or UnauthorizedAccessException or ObjectDisposedException or JsonException)
@@ -218,6 +220,19 @@ namespace KBot.App.Services
 
         public Task<string?> ResetMemoryDumpAsync(CancellationToken cancellationToken = default) =>
             SendCommandAsync("DUMP_RESET", cancellationToken);
+
+        // Applies a hunted position offset at runtime (offset FROM the module
+        // base, e.g. 0x37454E0). Returns raw JSON {ok,offset,message}.
+        public Task<string?> SetPositionOffsetAsync(long offsetFromBase, CancellationToken cancellationToken = default) =>
+            SendCommandAsync($"SET_POSITION_OFFSET {offsetFromBase:X}", cancellationToken);
+
+        // Drops the runtime override and returns to the compiled-in DX/GL default.
+        public Task<string?> ClearPositionOffsetAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("CLEAR_POSITION_OFFSET", cancellationToken);
+
+        // Reports whether a custom offset is active and the currently-active offset.
+        public Task<string?> GetPositionOffsetStatusAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("GET_OFFSET_STATUS", cancellationToken);
 
         // Scans the whole main module for an exact adjacent int32 triple (x,y,z)
         // - the minimap position. Returns raw JSON with a "candidates" array of

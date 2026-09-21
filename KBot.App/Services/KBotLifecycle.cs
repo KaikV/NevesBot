@@ -13,6 +13,7 @@ public sealed class KBotLifecycle : IDisposable
     private readonly GameLauncher _launcher = new();
     private readonly GameProcessWatcher _watcher = new();
     private readonly NativeService _native = new();
+    private readonly PositionOffsetStore _offsetStore = new();
     private readonly ICharacterSessionDetector _characterDetector;
     private CancellationTokenSource? _cancellation;
     private Task? _runTask;
@@ -113,8 +114,14 @@ public sealed class KBotLifecycle : IDisposable
             if (!await _native.AttachGameAsync(session.Pid, Path.GetFileName(session.ExecutablePath), cancellationToken))
                 throw new InvalidOperationException("O núcleo nativo não conseguiu conectar ao cliente.");
 
-            installation.LastGameExecutable = session.ExecutablePath;
             var executableName = Path.GetFileName(session.ExecutablePath);
+            if (_offsetStore.Get(executableName) is { } savedOffset && savedOffset != 0)
+            {
+                await _native.SetPositionOffsetAsync(savedOffset, cancellationToken);
+                Trace.WriteLine($"[Handoff] Reaplicando offset de posição salvo {savedOffset:X} para {executableName}");
+            }
+
+            installation.LastGameExecutable = session.ExecutablePath;
             if (!installation.GameExecutableNames.Contains(executableName, StringComparer.OrdinalIgnoreCase))
                 installation.GameExecutableNames.Add(executableName);
             _library.Save(installation);

@@ -248,7 +248,7 @@ void NamedPipeServer::HandleClient()
 		ss << "{\"ok\":" << (ok ? "true" : "false")
 		   << ",\"count\":" << candidates.size()
 		   << ",\"scanned\":\"0x" << std::hex << std::uppercase << scanned << std::dec << "\"";
-		if (candidates.size() > 8) candidates.resize(8); // keep within the 4KB pipe frame
+		if (candidates.size() > 24) candidates.resize(24); // keep within the 4KB pipe frame
 		ss << ",\"candidates\":[";
 		for (size_t i = 0; i < candidates.size(); ++i)
 		{
@@ -257,6 +257,41 @@ void NamedPipeServer::HandleClient()
 			   << candidates[i] << std::dec << std::setfill(' ') << "\"";
 		}
 		ss << "],\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request.rfind("SET_POSITION_OFFSET ", 0) == 0)
+	{
+		// SET_POSITION_OFFSET <hexOffsetFromBase> -> apply a hunted offset at runtime.
+		std::istringstream input(request.substr(20));
+		input >> std::hex;
+		unsigned long long offset = 0;
+		input >> offset;
+
+		std::string msg;
+		const bool ok = m_reader.TrySetCustomPositionOffset(offset, msg);
+		if (ok && offset != 0) m_reader.Poll(); // force a read so a bad offset fails fast
+
+		std::ostringstream ss;
+		ss << "{\"ok\":" << (ok ? "true" : "false")
+		   << ",\"offset\":\"0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+		   << offset << std::dec << std::setfill(' ')
+		   << "\",\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request == "CLEAR_POSITION_OFFSET")
+	{
+		std::string msg;
+		const bool ok = m_reader.TrySetCustomPositionOffset(0, msg);
+		std::ostringstream ss;
+		ss << "{\"ok\":" << (ok ? "true" : "false") << ",\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request == "GET_OFFSET_STATUS")
+	{
+		std::ostringstream ss;
+		ss << "{\"active\":" << (m_reader.HasCustomOffset() ? "true" : "false")
+		   << ",\"offset\":\"0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+		   << m_reader.GetActiveOffset() << std::dec << std::setfill(' ') << "\"}";
 		response = ss.str() + "\n";
 	}
 	else

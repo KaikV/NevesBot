@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <windows.h>
 #include <TlHelp32.h>
+#include <cstdio>
 
 // Reads the live character position out of the selected client.
 // Only one confirmed address chain is used; everything else stays pending.
@@ -31,6 +32,40 @@ public:
 	static constexpr DWORD YOffset = 0x4;
 	static constexpr DWORD ZOffset = 0x8;
 
+	// Runtime override for the position offset, discovered by the offset-hunter
+	// (two-scan intersection). 0 = use the compiled-in DX/GL default. This is an
+	// offset FROM THE MODULE BASE, so it stays valid across ASLR; it only breaks
+	// when the client binary itself changes.
+	ULONG_PTR GetActiveOffset() const noexcept
+	{
+		return m_customOffset != 0 ? m_customOffset : (IsDx() ? DxPositionOffset : GlPointerOffset);
+	}
+	bool HasCustomOffset() const noexcept { return m_customOffset != 0; }
+
+	bool TrySetCustomPositionOffset(unsigned long long offsetFromBase, std::string& message) noexcept
+	{
+		if (offsetFromBase == 0)
+		{
+			m_customOffset = 0;
+			m_valid = false;
+			message = "Offset custom limpo; usando o padrao do build.";
+			return true;
+		}
+		// Sanity: the triple must sit inside the main module's first ~32MB to be
+		// a real position field, not an out-of-range garbage hit.
+		if (offsetFromBase > 0x2000000ULL)
+		{
+			message = "Offset fora da faixa esperada (>32MB); provavel falso positivo.";
+			return false;
+		}
+		m_customOffset = static_cast<ULONG_PTR>(offsetFromBase);
+		m_valid = false; // force a fresh read on the next Poll so a bad offset errors out cleanly
+		char buf[96];
+		snprintf(buf, sizeof(buf), "Offset custom definido em 0x%llX (da base do modulo).", static_cast<unsigned long long>(m_customOffset));
+		message = buf;
+		return true;
+	}
+
 	void Initialize(unsigned int pid, HANDLE readHandle, const std::string& processName) noexcept
 	{
 		m_pid = pid;
@@ -39,6 +74,7 @@ public:
 		m_baseAddress = 0;
 		m_valid = false;
 		m_x = m_y = m_z = 0;
+		m_customOffset = 0;
 		ResetMemoryDump();
 		SetMessage("Leitura aguardando o primeiro ciclo.");
 		std::cout << "[ClientReader] Initializing pid=" << pid << '\n';
@@ -71,6 +107,22 @@ public:
 			return;
 		}
 		int x = 0, y = 0, z = 0;
+		if (m_customOffset != 0)
+		{
+			// Runtime override: the hunted address holds the X/Y/Z triple directly
+			// (adjacent int32s), independent of the build's original layout.
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + m_customOffset), &x, sizeof(x)) ||
+				!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + m_customOffset + YOffset), &y, sizeof(y)) ||
+				!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + m_customOffset + ZOffset), &z, sizeof(z)))
+			{
+				SetMessage("Falha ao ler X/Y/Z no offset custom; o endereco pode ter mudado com uma atualizacao.");
+				return;
+			}
+			m_x = x; m_y = y; m_z = z;
+			m_valid = true;
+			SetMessage("Posicao lida via offset custom (calibrado).");
+			return;
+		}
 		if (IsDx())
 		{
 			// DX: position is stored directly in the main module at base + DxPositionOffset.
@@ -271,6 +323,7 @@ private:
 	ULONG_PTR m_baseAddress = 0;
 	bool m_valid = false;
 	int m_x = 0, m_y = 0, m_z = 0;
+	ULONG_PTR m_customOffset = 0;
 	std::string m_message;
 	unsigned long long m_dumpAddress = 0;
 	unsigned int m_dumpRemaining = 0;

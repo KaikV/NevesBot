@@ -26,10 +26,16 @@ public sealed class CavebotViewModel : ObservableObject
 
     // Offset-hunting (re-calibrate after a client update). The minimap shows the
     // exact position; typing it here scans the module for that int32 triple.
+    // Two-scan flow: scan at position A, walk one tile, scan at position B; the
+    // candidate present in BOTH is the real offset, which "Aplicar" then pushes
+    // to the core (runtime override) and persists per-executable.
     private string _scanX = string.Empty;
     private string _scanY = string.Empty;
     private string _scanZ = string.Empty;
     private bool _scanRunning;
+    private List<string> _firstScanCandidates = new();
+    private bool _haveFirstScan;
+    private readonly PositionOffsetStore _offsetStore = new();
 
     // Route recording: reads the live position each tick and pins a waypoint
     // whenever the player moved >= RecordDistance tiles from the last one (or
@@ -62,9 +68,19 @@ public sealed class CavebotViewModel : ObservableObject
     public string ScanY { get => _scanY; set { Set(ref _scanY, value); OnPropertyChanged(nameof(CanScan)); } }
     public string ScanZ { get => _scanZ; set { Set(ref _scanZ, value); OnPropertyChanged(nameof(CanScan)); } }
     public string ScanResult { get; private set; } = "";
-    public bool ScanRunning { get => _scanRunning; private set { Set(ref _scanRunning, value); OnPropertyChanged(nameof(CanScan)); } }
+    public bool ScanRunning { get => _scanRunning; private set { Set(ref _scanRunning, value); OnPropertyChanged(nameof(CanScan)); OnPropertyChanged(nameof(CanIntersect)); } }
     public bool CanScan => !ScanRunning &&
         int.TryParse(ScanX, out int x) && int.TryParse(ScanY, out int y) && int.TryParse(ScanZ, out int z);
+
+    // Two-scan intersection. After the first scan, the user walks one tile and
+    // re-scans the NEW position; candidates surviving both are shown and can be
+    // applied. OffsetActive reflects whether the core has a custom offset live.
+    public string IntersectStatus { get; private set; } = "Faça o 1º scan na sua posição atual (minimap).";
+    public string IntersectionList { get; private set; } = "";
+    public string ActiveOffset { get; private set; } = "";
+    public bool CanIntersect => _haveFirstScan && !ScanRunning &&
+        int.TryParse(ScanX, out int x2) && int.TryParse(ScanY, out int y2) && int.TryParse(ScanZ, out int z2);
+    public bool CanApply => !string.IsNullOrEmpty(IntersectionList) && !ScanRunning;
 
     public string RecordDistance { get => _recordDistance; set { Set(ref _recordDistance, value); OnPropertyChanged(nameof(CanRecord)); } }
     public bool Recording { get => _recording; private set { Set(ref _recording, value); OnPropertyChanged(nameof(CanRecord)); OnPropertyChanged(nameof(RecordStatus)); } }
@@ -83,6 +99,8 @@ public sealed class CavebotViewModel : ObservableObject
     public ICommand StartRouteCommand { get; private set; } = null!;
     public ICommand StopRouteCommand { get; private set; } = null!;
     public ICommand ScanCommand { get; private set; } = null!;
+    public ICommand ApplyOffsetCommand { get; private set; } = null!;
+    public ICommand CancelHuntCommand { get; private set; } = null!;
     public ICommand RecordToggleCommand { get; private set; } = null!;
 
     public CavebotViewModel()
@@ -113,6 +131,8 @@ public sealed class CavebotViewModel : ObservableObject
         StartRouteCommand = new RelayCommand(_ => StartRouteAsync(), _ => CanStartRoute);
         StopRouteCommand = new RelayCommand(_ => StopRoute(), _ => _navigator.IsRunning);
         ScanCommand = new RelayCommand(async _ => await ScanAsync());
+        ApplyOffsetCommand = new RelayCommand(async _ => await ApplyAsync());
+        CancelHuntCommand = new RelayCommand(_ => CancelHunt());
         RecordToggleCommand = new RelayCommand(_ => ToggleRecord(), _ => CanRecord);
         RaiseRouteState();
     }
@@ -273,7 +293,45 @@ public sealed class CavebotViewModel : ObservableObject
         try
         {
             string? raw = await _nativeService.ScanForPositionAsync(x, y, z);
-            ScanResult = FormatScanResult(raw, x, y, z);
+            var (ok, candidates, message) = ParseScanRaw(raw, out var scanned);
+
+            if (!ok)
+            {
+                ScanResult = $"Falha na varredura: {message}";
+                return;
+            }
+
+            if (!_haveFirstScan)
+            {
+                // First scan: stash candidates, ask the user to move one tile.
+                _firstScanCandidates = candidates;
+                _haveFirstScan = true;
+                ScanResult = candidates.Count == 0
+                    ? $"Nenhuma tripla ({x},{y},{z}) encontrada. Confira as coordenadas do minimap e tente em outro ponto."
+                    : $"1º scan ok ({x},{y},{z}): {candidates.Count} candidato(s) em {(scanned / 1048576):d}MB lidos.";
+                IntersectStatus = "AGORA ANDE 1 TILE e rode o 2º scan com a NOVA posição do minimap.";
+                OnPropertyChanged(nameof(CanIntersect));
+                return;
+            }
+
+            // Second scan: keep only the offsets present in BOTH scans.
+            var second = new HashSet<string>(candidates, StringComparer.OrdinalIgnoreCase);
+            var survivors = _firstScanCandidates.Where(c => second.Contains(c)).ToList();
+
+            ScanResult = $"2º scan ok ({x},{y},{z}). Interseção com o 1º scan: {survivors.Count} candidato(s).";
+            if (survivors.Count == 0)
+            {
+                IntersectStatus = "Nenhum offset sobreviveu. Repita: cancele abaixo, refaça o 1º scan e garanta que você andou exatamente 1 tile entre eles.";
+                IntersectionList = "";
+            }
+            else
+            {
+                IntersectionList = string.Join(Environment.NewLine, survivors);
+                IntersectStatus = survivors.Count == 1
+                    ? "ÚNICO sobrevivente! Clique em APLICAR para usá-lo agora e salvar."
+                    : $"{survivors.Count} sobreviventes. Aplique um, teste a posição no minimap; se errar, cancele e tente o próximo.";
+            }
+            RaiseIntersection();
         }
         finally
         {
@@ -281,39 +339,127 @@ public sealed class CavebotViewModel : ObservableObject
         }
     }
 
-    private static string FormatScanResult(string? raw, int x, int y, int z)
+    private void RaiseIntersection()
     {
-        if (string.IsNullOrWhiteSpace(raw))
-            return "O núcleo não respondeu. Inicie o núcleo e garanta que o PokeAlliance está aberto.";
+        RunOnUi(() =>
+        {
+            OnPropertyChanged(nameof(IntersectionList));
+            OnPropertyChanged(nameof(IntersectStatus));
+            OnPropertyChanged(nameof(CanApply));
+            OnPropertyChanged(nameof(CanIntersect));
+        });
+    }
 
+    private static (bool Ok, List<string> Candidates, string Message) ParseScanRaw(string? raw, out long scannedBytes)
+    {
+        scannedBytes = 0;
+        if (string.IsNullOrWhiteSpace(raw))
+            return (false, new List<string>(), "O núcleo não respondeu. Inicie o núcleo e garanta que o PokeAlliance está aberto.");
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(raw);
             var root = doc.RootElement;
             bool ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == System.Text.Json.JsonValueKind.True;
-            long count = root.TryGetProperty("count", out var countEl) ? countEl.GetInt64() : 0;
-            var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() : string.Empty;
+            var message = root.TryGetProperty("message", out var msgEl) ? msgEl.GetString() ?? string.Empty : string.Empty;
+            if (root.TryGetProperty("scanned", out var scEl) && scEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                long.TryParse(scEl.GetString()?.TrimStart('0', 'x', 'X'), System.Globalization.NumberStyles.HexNumber, null, out scannedBytes);
 
-            if (!ok)
-                return $"Falha no varredura: {message}";
-
-            if (count == 0)
-                return $"Nenhuma tripla ({x},{y},{z}) encontrada. Confirme que as coordenadas do minimap estão exatas e tente em outro ponto do mapa.";
-
-            if (!root.TryGetProperty("candidates", out var cands) || cands.ValueKind != System.Text.Json.JsonValueKind.Array)
-                return $"Encontrada {count} ocorrência(s), mas a lista de endereços veio vazia.";
-
-            var lines = new System.Collections.Generic.List<string> { $"Tripla ({x},{y},{z}) encontrada {count} vez(es). Endereços candidatos (offset da base):" };
-            foreach (var c in cands.EnumerateArray())
-                lines.Add($"  {c.GetString()}");
-            lines.Add("");
-            lines.Add("Teste: ande 1 passo e rode o scan de novo com a NOVA posição. O offset que SURVIVERE entre os dois scans é o correto.");
-            return string.Join(Environment.NewLine, lines);
+            var list = new List<string>();
+            if (ok && root.TryGetProperty("candidates", out var cands) && cands.ValueKind == System.Text.Json.JsonValueKind.Array)
+                foreach (var c in cands.EnumerateArray())
+                {
+                    var s = c.GetString();
+                    if (!string.IsNullOrEmpty(s)) list.Add(s!);
+                }
+            return (ok, list, message);
         }
         catch (System.Text.Json.JsonException)
         {
-            return $"Resposta inesperada do núcleo:\n{raw}";
+            return (false, new List<string>(), $"Resposta inesperada do núcleo:\n{raw}");
         }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (string.IsNullOrWhiteSpace(IntersectionList)) { ScanResult = "Nenhum candidato para aplicar."; return; }
+        // Apply the first surviving candidate (user tests it; can retry others).
+        var first = IntersectionList.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+        if (!TryParseHexOffset(first, out long offset))
+        {
+            ScanResult = $"Não consegui ler o offset '{first}'.";
+            return;
+        }
+
+        ScanRunning = true;
+        ScanResult = $"Aplicando offset {first} no núcleo...";
+        try
+        {
+            string? resp = await _nativeService.SetPositionOffsetAsync(offset);
+            var ok = ParseJsonOk(resp, out _, out var msg);
+            if (ok)
+            {
+                ActiveOffset = first;
+                await PersistOffset(first);
+                ScanResult = $"Offset {first} aplicado em runtime e salvo por cliente. Confira a posição no minimap — se bater com o que você digitou no 2º scan, está calibrado.";
+            }
+            else ScanResult = $"Falha ao aplicar: {msg}";
+        }
+        finally
+        {
+            ScanRunning = false;
+        }
+        OnPropertyChanged(nameof(ActiveOffset));
+        OnPropertyChanged(nameof(CanApply));
+    }
+
+    private void CancelHunt()
+    {
+        _firstScanCandidates.Clear();
+        _haveFirstScan = false;
+        IntersectionList = "";
+        IntersectStatus = "Caçada reiniciada. Faça o 1º scan na sua posição atual (minimap).";
+        RaiseIntersection();
+        ScanResult = "Caçada de offset cancelada.";
+    }
+
+    // Best-effort persistence keyed by the running client's executable name, so
+    // the next attach re-applies the calibrated offset automatically. Pulls a
+    // fresh GET_STATUS to learn the process name (this VM owns its own pipe client).
+    private async Task PersistOffset(string hexOffset)
+    {
+        if (!TryParseHexOffset(hexOffset, out long offset) || offset == 0) return;
+        try
+        {
+            var status = await _nativeService.GetStatusAsync(System.Threading.CancellationToken.None);
+            if (!string.IsNullOrWhiteSpace(status?.ProcessName)) _offsetStore.Set(status!.ProcessName!, offset);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DirectoryNotFoundException or OperationCanceledException or TimeoutException)
+        {
+        }
+    }
+
+    private static bool TryParseHexOffset(string s, out long value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim().TrimStart('0', 'x', 'X');
+        return long.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out value);
+    }
+
+    private static bool ParseJsonOk(string? raw, out string offset, out string message)
+    {
+        offset = ""; message = "";
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            bool ok = root.TryGetProperty("ok", out var okEl) && okEl.ValueKind == System.Text.Json.JsonValueKind.True;
+            if (root.TryGetProperty("offset", out var offEl) && offEl.ValueKind == System.Text.Json.JsonValueKind.String) offset = offEl.GetString() ?? "";
+            if (root.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == System.Text.Json.JsonValueKind.String) message = msgEl.GetString() ?? "";
+            return ok;
+        }
+        catch (System.Text.Json.JsonException) { return false; }
     }
 
     private void Import()

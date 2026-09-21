@@ -27,6 +27,18 @@ public sealed class TargetingModule : IBotModule
                 : ActionIntent.Command("attack", p.AreaCombo ? "combo" : "single");
         }
 
+        // Out of battle, with a readable screen: pick WHICH wild to aim at. Rare/shiny
+        // words take total priority, otherwise the closest in-range same-floor wild.
+        // The selection itself is ported + tested in TargetSelection; the aim is a
+        // pending command until the "target creature N" offset exists.
+        if (s.HasPosition && s.Wilds.Count > 0)
+        {
+            var target = TargetSelection.Pick(
+                s.Wilds, s.X, s.Y, s.Z, p.AttackRange, p.RareFirst, p.RareWords);
+            if (target is not null)
+                return ActionIntent.Command("aim", target.Name);
+        }
+
         // Not in battle: if auto-summon is on and we know the field is empty
         // (active pokemon down), request sending one out. Slot 0 = keep/auto.
         if (p.AutoSummon && s.ActiveAlive == false)

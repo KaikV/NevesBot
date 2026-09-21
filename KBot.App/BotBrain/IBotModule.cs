@@ -36,6 +36,9 @@ public interface IProfileView
     bool AttackOneByOne { get; }
     bool AutoSummon { get; }
     int ActiveSlot { get; }                      // poke to send out (0 = keep current)
+    int AttackRange { get; }                     // Chebyshev tiles a target must be within to be considered
+    bool RareFirst { get; }                      // rare/shiny words take total priority over closest
+    IReadOnlyList<string> RareWords { get; }     // substrings (e.g. "shiny","elite") that mark a priority target
 
     // Misc features
     bool FishingEnabled { get; }

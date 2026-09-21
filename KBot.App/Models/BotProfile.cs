@@ -26,6 +26,9 @@ public sealed class BotProfile
     public bool AttackOneByOne { get; set; }         // "Attack the target (1 by 1)"
     public bool AutoSummon { get; set; } = true;     // "Soltar poke sozinho"
     public int ActiveSlot { get; set; }              // poke a mandar pra campo (0 = atual)
+    public int AttackRange { get; set; } = 7;        // tiles (Chebyshev) que o bot considera "no alcance"
+    public bool RareFirst { get; set; } = true;      // shiny/raro na lista tem prioridade total na mira
+    public List<string> RareWords { get; set; } = new(); // substrings (ex.: shiny, elite) que viram prioridade
     public bool AlertsEnabled { get; set; }
     public bool HotkeysEnabled { get; set; }
     public string ManualReviveHotkey { get; set; } = string.Empty;

@@ -18,7 +18,16 @@ public static class GameStateProvider
         if (status is null || !status.NativeOnline || !status.ClientFound)
             return GameState.Empty(nowMs);
 
-        bool hasScan = scan is { HasRead: true };
+        // No usable scan this tick: position + identity only, vision fields stay unknown.
+        // Binding a non-null local here is what lets the compiler trust every field below.
+        if (scan is not { HasRead: true } s)
+            return new GameState
+            {
+                ClientConnected = status.ClientFound,
+                InGame = presence == CharacterPresence.InGame,
+                HasPosition = status.HasPosition, X = status.PosX, Y = status.PosY, Z = status.PosZ,
+                InBattle = null, ActiveHpPercent = null, ActiveAlive = null, Pulled = false, NowMs = nowMs
+            };
 
         return new GameState
         {
@@ -31,13 +40,12 @@ public static class GameStateProvider
             InBattle = null,
             // A live read tells us how many wilds are on screen and whether OUR
             // poke is standing out there - the two signals socorro/targeting need.
-            EnemyCount = hasScan ? scan!.Wilds.Count : null,
+            EnemyCount = s.Wilds.Count,
+            Wilds = s.Wilds,
             ActiveHpPercent = null,
             ActiveAlive = null,
-            FieldHasPoke = hasScan ? scan!.PokeOnField() : null,
-            WildsNearby = hasScan && status.HasPosition
-                ? scan!.DangerNearby(status.PosX, status.PosY, status.PosZ)
-                : 0,
+            FieldHasPoke = s.PokeOnField(),
+            WildsNearby = status.HasPosition ? s.DangerNearby(status.PosX, status.PosY, status.PosZ) : 0,
             Pulled = false,
             NowMs = nowMs
         };

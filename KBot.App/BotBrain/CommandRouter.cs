@@ -33,6 +33,7 @@ public sealed class ProfileCommandResolver : ICommandResolver
     public string Describe(ActionIntent command) => CommandName(command) switch
     {
         "attack" => "atacar (aguarda offset de skill/batalha)",
+        "aim" => $"mirar em {command.Payload?.Split(':', 2)[1] ?? "?"} (aguarda offset de criatura)",
         "summon" => "soltar poke (aguarda slot de pokemon)",
         "talk" => "falar com NPC (aguarda offset de diálogo)",
         "use" => "usar item em alvo (aguarda offset)",

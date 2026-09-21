@@ -311,6 +311,7 @@ RunPmChecks();
 RunSocorroChecks();
 RunScanChecks();
 RunWalkChecks();
+RunTargetChecks();
 
 static void RunSocorroChecks()
 {
@@ -574,6 +575,64 @@ static void RunWalkChecks()
         // No recent use at all -> stairs.
         Check(Step(0, 0, 1, last, lastUse: null) == RecordAction.Stairs,
             "No prior use: floor change is a stairs");
+    }
+}
+
+static void RunTargetChecks()
+{
+    static ScannedCreature W(string name, int x, int y, int z = 0) => new(1, 60, x, y, z, name);
+
+    var rare = new[] { "shiny", "elite" };
+
+    // A) Closest in-range same-floor wild wins; out-of-range and other-floor are ignored.
+    {
+        var wilds = new[]
+        {
+            W("Rattata", 3, 0),   // d=3
+            W("Pidgey", 1, 1),    // d=1 -> closest
+            W("Eevee", 9, 0),     // d=9 > range 7
+            W("Mawile", 2, 2, 1)  // d=2 but z=1 (other floor)
+        };
+        Check(TargetSelection.Pick(wilds, 0, 0, 0, 7, false, rare)?.Name == "Pidgey",
+            "Closest alive same-floor wild is targeted");
+    }
+
+    // B) Rare/shiny takes TOTAL priority over distance when RareFirst is on.
+    {
+        var wilds = new[]
+        {
+            W("Pidgey", 1, 0),                // closer but normal
+            W("Shiny Mawile [169]", 5, 0),    // rare, farther -> wins
+        };
+        Check(TargetSelection.Pick(wilds, 0, 0, 0, 7, true, rare)?.Name == "Shiny Mawile [169]",
+            "Rare word beats a closer normal target");
+        Check(TargetSelection.Pick(wilds, 0, 0, 0, 7, false, rare)?.Name == "Pidgey",
+            "RareFirst off -> back to plain closest");
+    }
+
+    // C) Among several rares, the CLOSEST rare wins. Matching is a case-insensitive
+    //    substring of the whole name, so any server prefix works.
+    {
+        var wilds = new[]
+        {
+            W("ELITE Gengar", 6, 0),   // rare, farther
+            W("shiny Zubat", 2, 0),    // rare, closer -> wins
+        };
+        Check(TargetSelection.Pick(wilds, 0, 0, 0, 7, true, rare)?.Name == "shiny Zubat",
+            "Closest of the rares is picked");
+    }
+
+    // D) Nothing valid on screen (all out of range / dead / other floor) -> null.
+    {
+        var wilds = new[]
+        {
+            W("Rattata", 8, 0),      // beyond range 7
+            W("Pidgey", 2, 0, 3),    // other floor
+        };
+        Check(TargetSelection.Pick(wilds, 0, 0, 0, 7, true, rare) is null,
+            "No target when nothing is reachable");
+        Check(TargetSelection.Pick(Array.Empty<ScannedCreature>(), 0, 0, 0, 7, true, rare) is null,
+            "No target on an empty screen");
     }
 }
 

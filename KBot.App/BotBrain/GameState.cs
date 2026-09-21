@@ -47,6 +47,10 @@ public sealed record GameState
     // socorro tempo: with a wild glued to us the rhythm shrinks to a sprint.
     public int WildsNearby { get; init; }
 
+    // The full list of alive wilds from the screen scan (ETAPA 2). Empty until the
+    // vision transport exists; modules that need a real target degrade to null.
+    public IReadOnlyList<ScannedCreature> Wilds { get; init; } = System.Array.Empty<ScannedCreature>();
+
     // "Pulled" = the player got dragged by a move/trap. Set by vision/alerts.
     public bool Pulled { get; init; }
 

@@ -4,7 +4,7 @@ namespace KBot.App.BotBrain;
 // This is what the native/vision layer will eventually feed us; today tests inject it
 // directly. The pokebar is deliberately ABSENT here: this snapshot is the "honest"
 // source the bot trusts when the local pokebar copy lies.
-public sealed record ScannedCreature(int Type, double HealthPercent, int X, int Y, int Z)
+public sealed record ScannedCreature(int Type, double HealthPercent, int X, int Y, int Z, string Name = "")
 {
     // PokeAlliance marks creatures by TYPE, not skull (main.lua:938):
     public const int SummonOwn = 3;   // YOUR pokemon  -> never target

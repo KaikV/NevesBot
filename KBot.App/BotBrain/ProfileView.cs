@@ -28,6 +28,10 @@ public sealed class ProfileView : IProfileView
     public bool AttackOneByOne => _p.AttackOneByOne;
     public bool AutoSummon => _p.AutoSummon;
     public int ActiveSlot => _p.ActiveSlot;
+    public int AttackRange => _p.AttackRange;
+    public bool RareFirst => _p.RareFirst;
+    public IReadOnlyList<string> RareWords => _p.RareWords;
+    public IReadOnlyList<string> MonstersToAttack => _p.MonstersToAttack;
     public bool FishingEnabled => _p.FishingEnabled;
     public string? FishingHotkey => _p.FishingHotkey;
     public bool CatchEnabled => _p.CatchEnabled;

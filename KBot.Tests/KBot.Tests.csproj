@@ -20,6 +20,7 @@
     <Compile Include="..\KBot.App\BotBrain\GameState.cs" Link="GameState.cs" />
     <Compile Include="..\KBot.App\BotBrain\ScreenScan.cs" Link="ScreenScan.cs" />
     <Compile Include="..\KBot.App\BotBrain\CavebotRecorder.cs" Link="CavebotRecorder.cs" />
+    <Compile Include="..\KBot.App\BotBrain\TargetSelection.cs" Link="TargetSelection.cs" />
     <Compile Include="..\KBot.App\BotBrain\ActionIntent.cs" Link="ActionIntent.cs" />
     <Compile Include="..\KBot.App\BotBrain\IBotModule.cs" Link="IBotModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\ProfileView.cs" Link="ProfileView.cs" />

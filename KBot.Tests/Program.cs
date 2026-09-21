@@ -308,6 +308,117 @@ static string ConfigShareServiceChecksumHelper(string body)
 }
 
 RunPmChecks();
+RunSocorroChecks();
+
+static void RunSocorroChecks()
+{
+    static GameState GS(long t, bool? field, int wilds, int? activeSlot,
+        System.Collections.Generic.IReadOnlyList<PokebarSlot>? bar = null) => new()
+    {
+        ClientConnected = true, InGame = true, HasPosition = true, NowMs = t,
+        FieldHasPoke = field, WildsNearby = wilds, ActivePokebarSlot = activeSlot,
+        ActiveAlive = field ?? false,
+        Pokebar = bar ?? System.Array.Empty<PokebarSlot>()
+    };
+    static PokebarSlot B(string name, double hp) => new(name, hp);
+
+    // A) Grace window: empty field must NOT fire before the fixed 1.5s; then it sends
+    //    the ACTIVE slot. Danger does NOT shorten the grace (Lua keeps ESPERA_MS=1500).
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile { AttackerEnabled = true, ActiveSlot = 0 });
+        var bar = new[] { B("Bulbasaur", 80), B("Shiny Magneton", 55) };
+        Check(m.Decide(GS(0, false, 0, 2, bar), prof) is null, "Socorro silent before grace");
+        Check(m.Decide(GS(1400, false, 0, 2, bar), prof) is null, "Socorro still inside grace");
+        var send = m.Decide(GS(1500, false, 0, 2, bar), prof);
+        Check(send is { Channel: ActionChannel.Command, Payload: "summon:2" },
+            $"Socorro sends active slot after grace (got {send})");
+        Check(m.Decide(GS(1500 + 1199, false, 0, 2, bar), prof) is null,
+            "Socorro silent while last send is inside its confirm window");
+        Check(m.Status.Contains("slot 2"), $"Socorro status names the slot ({m.Status})");
+    }
+
+    // B) OUR poke fainted -> socorro YIELDS to the revive ONLY inside the 6s identity
+    //    window; once the item may have run out it stops yielding and swaps a live one.
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile { AutoReviveEnabled = true, ReviveItemHotkey = "F9" });
+        var bar = new[] { B("Pikachu", 90), B("Graveler", 0) };
+        for (long t = 1000; t < 6000; t += 100)   // <=~5s into the absence: identity window
+            Check(m.Decide(GS(t, false, 0, 2, bar), prof) is null,
+                "Socorro yields to revive while its own poke is fainted (<=6s)");
+        Check(m.Status.Contains("revive"), $"Status explains the yield ({m.Status})");
+        // The absence began at t=1000, so allowOther flips once t-1000 > 6000 (t>7000).
+        var swapped = m.Decide(GS(7100, false, 0, 2, bar), prof);
+        Check(swapped is { Payload: "summon:1" },
+            $"After the revive window, socorro swaps a live slot (got {swapped})");
+    }
+
+    // C) Liar slot (pokebar said alive, nothing appeared): benched, and when every slot
+    //    is benched the bench clears (never gives up). Danger (wild nearby) shrinks the
+    //    rhythm to 1.2s, so the 5-attempt sequence lands fast: 1,2,3 then the cleared
+    //    bench retries 1,2 - and stops (MAX_TENT).
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile());
+        var bar = new[] { B("a", 50), B("b", 50), B("c", 50) };
+        var sent = new List<string>();
+        for (long t = 1000; t < 8000; t += 100)  // wild glued => danger rhythm (1.2s)
+        {
+            var intent = m.Decide(GS(t, false, 1, 1, bar), prof);
+            if (intent is not null) sent.Add(intent.Payload!);
+        }
+        Check(sent.SequenceEqual(new[] { "summon:1", "summon:2", "summon:3", "summon:1", "summon:2" }),
+            $"Socorro benches liar slots, clears the bench, caps at MAX_TENT (got {string.Join(",", sent)})");
+    }
+
+    // C2) Recovery resets the whole machine: a poke on the field clears the failure bench,
+    //     and a brand-new absence after it sends immediately on a fresh clock.
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile());
+        var bar = new[] { B("a", 50), B("b", 50), B("c", 50) };
+        Check(m.Decide(GS(0, true, 1, 1, bar), prof) is null, "Socorro idle while poke is on field");
+        Check(m.Decide(GS(100, false, 0, 1, bar), prof) is null, "Fresh absence: grace clock starts");
+        var second = m.Decide(GS(100 + 1500, false, 0, 1, bar), prof);
+        Check(second is { Payload: "summon:1" }, "Socorro starts fresh after recovery");
+    }
+
+    // D) No readable pokebar -> it never guesses a slot.
+    {
+        var m = new SocorroModule();
+        var prof = new ProfileView(new BotProfile { AutoSummon = true });
+        for (long t = 0; t < 3000; t += 100)
+            Check(m.Decide(GS(t, false, 0, null), prof) is null, "Socorro never guesses without pokebar");
+        Check(m.Status.Contains("sem leitura"), $"Status says why it idles ({m.Status})");
+    }
+
+    // E) Full brain wiring: with AutoSummon off, ONLY socorro can send a poke out on an
+    //    empty field, so if the brain produces a "summon" it proves the 95-priority socorro
+    //    (not the 90-priority targeting) owned it. Socorro initializes its absence clock on
+    //    its very first tick, so we advance real time over several ticks.
+    {
+        var prof = new ProfileView(new BotProfile
+        {
+            AttackerEnabled = true, AutoSummon = false,
+            AutoReviveEnabled = false, CureAtPercent = 70
+        });
+        var bar = new[] { B("a", 50), B("b", 50) };
+        long now = 0;
+        var brain = new BotBrain(new FakeSink(), () => GS(now, false, 0, 1, bar), prof);
+        brain.Register(new HealingModule(), new SocorroModule(), new TargetingModule());
+        ActionIntent? fired = null;
+        foreach (var t in new long[] { 1, 1501, 2901, 4301 })
+        {
+            now = t;
+            var r = brain.Tick();
+            if (r is not null) { fired = r; break; }
+        }
+        Check(fired is { Channel: ActionChannel.Command, Payload: "summon:1" },
+            $"Brain routes the empty-field send-out to socorro (got {fired})");
+    }
+}
+
 
 static void RunPmChecks()
 {

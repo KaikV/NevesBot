@@ -26,6 +26,7 @@
     <Compile Include="..\KBot.App\BotBrain\GameStateProvider.cs" Link="GameStateProvider.cs" />
     <Compile Include="..\KBot.App\BotBrain\BotBrain.cs" Link="BotBrain.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\HealingModule.cs" Link="HealingModule.cs" />
+    <Compile Include="..\KBot.App\BotBrain\Modules\SocorroModule.cs" Link="SocorroModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\TargetingModule.cs" Link="TargetingModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\RouteModule.cs" Link="RouteModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\FeatureModules.cs" Link="FeatureModules.cs" />

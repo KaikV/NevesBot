@@ -309,6 +309,7 @@ static string ConfigShareServiceChecksumHelper(string body)
 
 RunPmChecks();
 RunSocorroChecks();
+RunScanChecks();
 
 static void RunSocorroChecks()
 {
@@ -428,6 +429,78 @@ static void RunSocorroChecks()
         }
         Check(fired is { Channel: ActionChannel.Command, Payload: "summon:1" },
             $"Brain routes the empty-field send-out to socorro (got {fired})");
+    }
+}
+
+static void RunScanChecks()
+{
+    // Helper: a creature at a tile.
+    static ScannedCreature C(int type, double hp, int x, int y, int z) => new(type, hp, x, y, z);
+    const int Own = ScannedCreature.SummonOwn;      // 3
+    const int Other = ScannedCreature.SummonOther;  // 4
+
+    // A) One pass separates "my poke", "live wilds", and drops dead monsters + other
+    //    players. This is _cbScreen(): before, both questions walked the list twice.
+    {
+        var r = ScreenScan.Analyze(new[]
+        {
+            C(1, 80, 2, 0, 0),   // wild, alive     -> counted
+            C(5, 40, -1, 3, 0),  // wild, alive     -> counted
+            C(2, 0, 9, 9, 0),    // wild, DEAD      -> dropped
+            C(Own, 70, 0, 0, 0), // our poke        -> mine
+            C(Other, 99, 3, 1, 0)// another player  -> dropped
+        });
+        Check(r.HasRead, "Analyze marks itself as a real read");
+        Check(r.MyPoke is not null && r.MyPoke.IsAlive, "Analyze finds the live poke as ours");
+        Check(r.Wilds.Count == 2, $"Analyze keeps only the two live wilds (got {r.Wilds.Count})");
+        Check(!r.Wilds.Any(w => w.X == 9), "Dead monster is not a target");
+        Check(r.PokeOnField(), "PokeOnField true when a live poke is on screen");
+    }
+
+    // B) sofaPokeOut(): a corpse drawn a beat before the server removes it does NOT
+    //    count as "poke on field". Counting it held socorro exactly when needed.
+    {
+        var corpse = ScreenScan.Analyze(new[] { C(Own, 0, 0, 0, 0) });
+        Check(corpse.HasRead && corpse.MyPoke is not null && !corpse.PokeOnField(),
+            "A fainted poke on screen reads as NO poke on field");
+        var none = ScreenScan.Analyze(Array.Empty<ScannedCreature>());
+        Check(none.HasRead && !none.PokeOnField() && none.Wilds.Count == 0,
+            "Empty screen reads covered=false with zero wilds");
+        Check(ScreenScan.Empty().HasRead == false, "No transport = UNKNOWN, not an empty screen");
+    }
+
+    // C) perigoPerto(): same z is mandatory and the reach is Chebyshev <= 3. A monster
+    //    glued diagonally within the square counts; same-tile-lineup on another floor
+    //    never does.
+    {
+        var r = ScreenScan.Analyze(new[]
+        {
+            C(1, 50, 2, 2, 0),    // Chebyshev 2, same z   -> danger
+            C(1, 50, -3, 0, 0),   // Chebyshev 3, same z   -> danger (edge)
+            C(1, 50, 4, 0, 0),    // Chebyshev 4           -> beyond reach
+            C(1, 50, 2, 2, 1)     // Chebyshev 2 but z=1   -> other floor
+        });
+        Check(r.DangerNearby(0, 0, 0) == 2,
+            $"Danger counts the two within-reach same-z wilds (got {r.DangerNearby(0, 0, 0)})");
+        Check(ScreenScan.Chebyshev((2, 2), (0, 0)) == 2, "Chebyshev uses the max axis");
+    }
+
+    // D) Wire-up: the provider turns a scan into EnemyCount + FieldHasPoke, and falls
+    //    back to unknown when there is no scan yet (transport still offset-bound).
+    {
+        var ready = new NativeStatus { NativeOnline = true, ClientFound = true, HasPosition = true, PosX = 0, PosY = 0, PosZ = 0 };
+        var scan = ScreenScan.Analyze(new[]
+        {
+            C(1, 50, 1, 0, 0), C(1, 50, 2, 1, 0), C(Own, 60, 0, 0, 0)
+        });
+        var with = GameStateProvider.From(ready, CharacterPresence.InGame, 1000, scan);
+        Check(with.EnemyCount == 2, $"Provider exposes EnemyCount from the scan (got {with.EnemyCount})");
+        Check(with.FieldHasPoke == true, "Provider sets FieldHasPoke from the scan");
+        Check(with.WildsNearby == 2, $"Provider computes nearby wilds at the player pos (got {with.WildsNearby})");
+
+        var blind = GameStateProvider.From(ready, CharacterPresence.InGame, 1000, null);
+        Check(blind.EnemyCount is null && blind.FieldHasPoke is null,
+            "No scan => unknown (null), never a guessed zero");
     }
 }
 

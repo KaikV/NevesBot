@@ -65,7 +65,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 | Feature | Fonte | Como funciona | KBot |
 | --- | --- | --- | --- |
 | Detectar batalha | `main.lua:1469,8736` | Não há boolean: `emAcao = getAttackingCreature() ~= nil` + nº de selvagens da varredura | 🟧 precisa de `GetAttackingCreature` + spectators |
-| Varredura de tela (visão) | `main.lua:995-1062` | `_cbScreen`: iter `getSpectatorsInRange`, separa `mine` (SummonOwn) de `wilds` (monstros atacáveis com HP>0); memo por tick (~10x/s) | ⬜ núcleo — destrava tudo |
+| Varredura de tela (visão) | `main.lua:995-1062` | `_cbScreen`: iter `getSpectatorsInRange`, separa `mine` (SummonOwn) de `wilds` (monstros atacáveis com HP>0); memo por tick (~10x/s) | ✅ decisão no ScreenScan.cs (teste headless); espera offset de criaturas p/ soltar no real |
 | Combo em área vs 1x1 | `n1_combate.lua` | Combina todos os alvos da varredura; "1 by 1" prioriza o da lista de alvos primeiro | 🟧 `TargetingModule` decide, sem varredura ainda |
 | Lista de alvos (prioridade) | `main_endgame.lua` | Ordena por nome na lista; `pokestopCmd` congela via chat `"!pokestop"` | 🟧 lista existe, seleção espera varredura |
 | Soltar poke sozinho | `main.lua:3843` | `getMana()` sempre -1 no PA; usa presença de SummonOwn no mapa; `requestChangePokemon(slot)` | 🟧 decide, sem ler campo |
@@ -154,6 +154,9 @@ passou no teste headless e (quando depender de runtime) no seu Windows.
   (espera calibração de offset para acender no real).
 
 ### ETAPA 2 — Ler criaturas na tela (varredura / visão)
+- **Status:** ✅ decisão pronta (ScreenScan.cs, teste headless A–D); falta transporte
+  C++ (offsets de criaturas não existem ainda). `GameStateProvider` já consome o scan:
+  `EnemyCount` + `FieldHasPoke` + `WildsNearby` viram reais quando a varredura existir.
 - **Objetivo:** `Map.GetSpectatorsInRange(center, rx, ry)` retornando Criatura com tipo/HP/pos.
 - **Como confiro:** `main.lua:977-1062` (`sofaVisionSpecs` + `_cbScreen`): separa `mine`
   (SummonOwn=3) de `wilds` (monstros atacáveis HP>0); `visX=10/visY=5` (tela 21×11); memo por tick.

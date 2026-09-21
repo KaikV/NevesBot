@@ -5,6 +5,7 @@ namespace KBot.App.Models;
 
 public sealed class BotProfile
 {
+    public int SchemaVersion { get; set; } = 2;
     public List<string> MonstersToAttack { get; set; } = new();
     public bool AttackerEnabled { get; set; }
     public bool AutoReviveEnabled { get; set; }
@@ -21,6 +22,9 @@ public sealed class BotProfile
     public int CureAtPercent { get; set; } = 70;     // threshold to cast heal/medicine
     public string MedicineHotkey { get; set; } = "F11";
     public string HealHotkey { get; set; } = "F12";
+    public int PlayerHealPercent { get; set; } = 80;
+    public int HealingCooldownMs { get; set; } = 1500;
+    public bool HealOnlyOutOfBattle { get; set; }
 
     // Targeting (aba Home -> "How the bot attacks" + aba Target)
     public bool AreaCombo { get; set; } = true;      // "Combo em area (varios)"
@@ -29,7 +33,14 @@ public sealed class BotProfile
     public int ActiveSlot { get; set; }              // poke a mandar pra campo (0 = atual)
     public int AttackRange { get; set; } = 7;        // tiles (Chebyshev) que o bot considera "no alcance"
     public bool RareFirst { get; set; } = true;      // shiny/raro na lista tem prioridade total na mira
-    public List<string> RareWords { get; set; } = new(); // substrings (ex.: shiny, elite) que viram prioridade
+    public List<string> RareWords { get; set; } = new() { "shiny", "elite", "ancient" }; // substrings que viram prioridade
+    public List<string> IgnoredMonsters { get; set; } = new();
+    public bool TargetMoveEnabled { get; set; } = true;
+    public bool TargetApproachEnabled { get; set; } = true;
+    public bool TargetFollowInBattle { get; set; } = true;
+    public int TargetMoveIntervalMs { get; set; } = 2500;
+    public int TargetKeepDistance { get; set; } = 1;
+    public bool PauseRouteOnTarget { get; set; }
     public bool AlertsEnabled { get; set; }
     // Per-supply alert thresholds (0_AB_catch style "supply" rules): map a bag item
     // key (name or numeric id string, e.g. "2394" pokeball, "3156" revive) to the
@@ -53,6 +64,7 @@ public sealed class BotProfile
     public int FishingY { get; set; }
     public bool CatchEnabled { get; set; }
     public string CatchHotkey { get; set; } = string.Empty;
+    public int CatchDelayMs { get; set; } = 200;
     // Per-pokemon catch lines (0_AB_catch.lua): map a corpse item id to a ball id.
     // A ball id under 100 means "no real ball bound" and that line never throws.
     public List<KBot.App.BotBrain.CatchEntry> CatchEntries { get; set; } = new();

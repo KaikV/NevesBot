@@ -21,7 +21,7 @@ public sealed class SpellEditor : ObservableObject
     public string CooldownText { get => _cooldownText; set => Set(ref _cooldownText, value); }
 }
 
-public sealed class SettingsViewModel : ObservableObject
+public sealed class SettingsViewModel : ObservableObject, IDisposable
 {
     private string _newMonster = string.Empty;
     private string? _selectedMonster;
@@ -30,12 +30,25 @@ public sealed class SettingsViewModel : ObservableObject
     private bool _attackOneByOne;
     private bool _autoSummon = true;
     private int _activeSlot;
+    private string _attackRange = "7";
+    private string _ignoredMonsters = string.Empty;
+    private string _rareWords = "shiny, elite, ancient";
+    private bool _rareFirst = true;
+    private bool _targetMoveEnabled = true;
+    private bool _targetApproachEnabled = true;
+    private bool _targetFollowInBattle = true;
+    private string _targetMoveIntervalMs = "2500";
+    private string _targetKeepDistance = "1";
+    private bool _pauseRouteOnTarget;
     private bool _autoReviveEnabled;
     private bool _foodEnabled;
     private bool _autoPotion;
     private bool _autoMedicine = true;
     private bool _healPlayer = true;
     private int _cureAtPercent = 70;
+    private string _playerHealPercent = "80";
+    private string _healingCooldownMs = "1500";
+    private bool _healOnlyOutOfBattle;
     private string _reviveHp = "0";
     private string _reviveOutOfBattleHp = "0";
     private string _reviveItemHotkey = "F9";
@@ -57,6 +70,10 @@ public sealed class SettingsViewModel : ObservableObject
     private string _fishingWaterId = "48415";
     private bool _catchEnabled;
     private string _catchHotkey = string.Empty;
+    private string _catchDelayMs = "200";
+    private bool _catchShinyEnabled;
+    private string _shinyBallId = "0";
+    private string _catchRules = string.Empty;
     private bool _lootEnabled;
     private string _lootHotkey = string.Empty;
     private bool _antiAfkEnabled;
@@ -97,6 +114,7 @@ public sealed class SettingsViewModel : ObservableObject
     public ObservableCollection<string> Monsters { get; } = new();
     public ObservableCollection<SpellEditor> Spells { get; } = new();
     public ObservableCollection<KBot.App.Services.DiagnosticItem> Diagnostics { get; } = new();
+    public ObservableCollection<AutomationEvent> AlertHistory { get; } = new();
     public string NewMonster { get => _newMonster; set => Set(ref _newMonster, value); }
     public string? SelectedMonster { get => _selectedMonster; set { Set(ref _selectedMonster, value); OnPropertyChanged(nameof(HasSelectedMonster)); } }
     public bool HasSelectedMonster => SelectedMonster is not null;
@@ -105,12 +123,25 @@ public sealed class SettingsViewModel : ObservableObject
     public bool AttackOneByOne { get => _attackOneByOne; set => Set(ref _attackOneByOne, value); }
     public bool AutoSummon { get => _autoSummon; set => Set(ref _autoSummon, value); }
     public int ActiveSlot { get => _activeSlot; set => Set(ref _activeSlot, value); }
+    public string AttackRange { get => _attackRange; set => Set(ref _attackRange, value); }
+    public string IgnoredMonsters { get => _ignoredMonsters; set => Set(ref _ignoredMonsters, value); }
+    public string RareWords { get => _rareWords; set => Set(ref _rareWords, value); }
+    public bool RareFirst { get => _rareFirst; set => Set(ref _rareFirst, value); }
+    public bool TargetMoveEnabled { get => _targetMoveEnabled; set => Set(ref _targetMoveEnabled, value); }
+    public bool TargetApproachEnabled { get => _targetApproachEnabled; set => Set(ref _targetApproachEnabled, value); }
+    public bool TargetFollowInBattle { get => _targetFollowInBattle; set => Set(ref _targetFollowInBattle, value); }
+    public string TargetMoveIntervalMs { get => _targetMoveIntervalMs; set => Set(ref _targetMoveIntervalMs, value); }
+    public string TargetKeepDistance { get => _targetKeepDistance; set => Set(ref _targetKeepDistance, value); }
+    public bool PauseRouteOnTarget { get => _pauseRouteOnTarget; set => Set(ref _pauseRouteOnTarget, value); }
     public bool AutoReviveEnabled { get => _autoReviveEnabled; set => Set(ref _autoReviveEnabled, value); }
     public bool FoodEnabled { get => _foodEnabled; set => Set(ref _foodEnabled, value); }
     public bool AutoPotion { get => _autoPotion; set => Set(ref _autoPotion, value); }
     public bool AutoMedicine { get => _autoMedicine; set => Set(ref _autoMedicine, value); }
     public bool HealPlayer { get => _healPlayer; set => Set(ref _healPlayer, value); }
     public int CureAtPercent { get => _cureAtPercent; set => Set(ref _cureAtPercent, value); }
+    public string PlayerHealPercent { get => _playerHealPercent; set => Set(ref _playerHealPercent, value); }
+    public string HealingCooldownMs { get => _healingCooldownMs; set => Set(ref _healingCooldownMs, value); }
+    public bool HealOnlyOutOfBattle { get => _healOnlyOutOfBattle; set => Set(ref _healOnlyOutOfBattle, value); }
     public string ReviveHp { get => _reviveHp; set => Set(ref _reviveHp, value); }
     public string ReviveOutOfBattleHp { get => _reviveOutOfBattleHp; set => Set(ref _reviveOutOfBattleHp, value); }
     public string ReviveItemHotkey { get => _reviveItemHotkey; set => Set(ref _reviveItemHotkey, value); }
@@ -132,6 +163,10 @@ public sealed class SettingsViewModel : ObservableObject
     public string FishingWaterId { get => _fishingWaterId; set => Set(ref _fishingWaterId, value); }
     public bool CatchEnabled { get => _catchEnabled; set => Set(ref _catchEnabled, value); }
     public string CatchHotkey { get => _catchHotkey; set => Set(ref _catchHotkey, value); }
+    public string CatchDelayMs { get => _catchDelayMs; set => Set(ref _catchDelayMs, value); }
+    public bool CatchShinyEnabled { get => _catchShinyEnabled; set => Set(ref _catchShinyEnabled, value); }
+    public string ShinyBallId { get => _shinyBallId; set => Set(ref _shinyBallId, value); }
+    public string CatchRules { get => _catchRules; set => Set(ref _catchRules, value); }
     public bool LootEnabled { get => _lootEnabled; set => Set(ref _lootEnabled, value); }
     public string LootHotkey { get => _lootHotkey; set => Set(ref _lootHotkey, value); }
     public bool AntiAfkEnabled { get => _antiAfkEnabled; set => Set(ref _antiAfkEnabled, value); }
@@ -177,6 +212,7 @@ public sealed class SettingsViewModel : ObservableObject
     public ICommand RemoveMonsterCommand { get; }
     public ICommand MoveMonsterUpCommand { get; }
     public ICommand MoveMonsterDownCommand { get; }
+    public ICommand ClearAlertHistoryCommand { get; }
 
     public SettingsViewModel()
     {
@@ -189,6 +225,10 @@ public sealed class SettingsViewModel : ObservableObject
         RemoveMonsterCommand = new RelayCommand(_ => RemoveMonster());
         MoveMonsterUpCommand = new RelayCommand(_ => MoveMonster(-1));
         MoveMonsterDownCommand = new RelayCommand(_ => MoveMonster(1));
+        ClearAlertHistoryCommand = new RelayCommand(_ => AutomationEventHub.Shared.Clear());
+        foreach (var item in AutomationEventHub.Shared.Snapshot().Reverse()) AlertHistory.Add(item);
+        AutomationEventHub.Shared.Published += OnAutomationEvent;
+        AutomationEventHub.Shared.Cleared += OnAutomationEventsCleared;
         try { Apply(BotProfileService.Load()); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -323,6 +363,38 @@ public sealed class SettingsViewModel : ObservableObject
             Feedback = "O slot de pokemon deve estar entre 0 e 6.";
             return null;
         }
+        if (!int.TryParse(AttackRange, out var attackRange) || attackRange < 1 || attackRange > 20)
+        {
+            Feedback = "O alcance do alvo deve estar entre 1 e 20 SQMs.";
+            return null;
+        }
+        if (!int.TryParse(TargetMoveIntervalMs, out var targetMoveIntervalMs) || targetMoveIntervalMs < 100 ||
+            !int.TryParse(TargetKeepDistance, out var targetKeepDistance) || targetKeepDistance < 0 || targetKeepDistance > 20)
+        {
+            Feedback = "O movimento do alvo exige intervalo de pelo menos 100 ms e distância entre 0 e 20 SQMs.";
+            return null;
+        }
+        if (!int.TryParse(PlayerHealPercent, out var playerHealPercent) || playerHealPercent < 1 || playerHealPercent > 100 ||
+            !int.TryParse(HealingCooldownMs, out var healingCooldownMs) || healingCooldownMs < 250)
+        {
+            Feedback = "A cura do personagem exige HP entre 1 e 100 e cooldown de pelo menos 250 ms.";
+            return null;
+        }
+        if (!int.TryParse(CatchDelayMs, out var catchDelayMs) || catchDelayMs < 0 || catchDelayMs > 60000)
+        {
+            Feedback = "O atraso da captura deve estar entre 0 e 60000 ms.";
+            return null;
+        }
+        if (!int.TryParse(ShinyBallId, out var shinyBallId) || (shinyBallId != 0 && shinyBallId < 100))
+        {
+            Feedback = "A bola de shiny deve ser 0 (desligada) ou um ID igual ou maior que 100.";
+            return null;
+        }
+        if (!TryParseCatchRules(CatchRules, out var catchEntries, out var catchRuleError))
+        {
+            Feedback = catchRuleError;
+            return null;
+        }
         var spells = new System.Collections.Generic.List<SpellSetting>();
         foreach (var editor in Spells)
         {
@@ -342,12 +414,25 @@ public sealed class SettingsViewModel : ObservableObject
             AttackOneByOne = AttackOneByOne,
             AutoSummon = AutoSummon,
             ActiveSlot = ActiveSlot,
+            AttackRange = attackRange,
+            IgnoredMonsters = SplitList(IgnoredMonsters),
+            RareWords = SplitList(RareWords),
+            RareFirst = RareFirst,
+            TargetMoveEnabled = TargetMoveEnabled,
+            TargetApproachEnabled = TargetApproachEnabled,
+            TargetFollowInBattle = TargetFollowInBattle,
+            TargetMoveIntervalMs = targetMoveIntervalMs,
+            TargetKeepDistance = targetKeepDistance,
+            PauseRouteOnTarget = PauseRouteOnTarget,
             AutoReviveEnabled = AutoReviveEnabled,
             FoodEnabled = FoodEnabled,
             AutoPotion = AutoPotion,
             AutoMedicine = AutoMedicine,
             HealPlayer = HealPlayer,
             CureAtPercent = CureAtPercent,
+            PlayerHealPercent = playerHealPercent,
+            HealingCooldownMs = healingCooldownMs,
+            HealOnlyOutOfBattle = HealOnlyOutOfBattle,
             ReviveHp = reviveHp,
             ReviveOutOfBattleHp = outOfBattleHp,
             ReviveItemHotkey = ReviveItemHotkey,
@@ -369,6 +454,10 @@ public sealed class SettingsViewModel : ObservableObject
             FishingWaterId = fishingWaterId,
             CatchEnabled = CatchEnabled,
             CatchHotkey = CatchHotkey,
+            CatchDelayMs = catchDelayMs,
+            CatchShinyEnabled = CatchShinyEnabled,
+            ShinyBallId = shinyBallId,
+            CatchEntries = catchEntries,
             LootEnabled = LootEnabled,
             LootHotkey = LootHotkey,
             AntiAfkEnabled = AntiAfkEnabled,
@@ -515,12 +604,25 @@ public sealed class SettingsViewModel : ObservableObject
         AttackOneByOne = profile.AttackOneByOne;
         AutoSummon = profile.AutoSummon;
         ActiveSlot = profile.ActiveSlot;
+        AttackRange = profile.AttackRange.ToString();
+        IgnoredMonsters = string.Join(", ", profile.IgnoredMonsters);
+        RareWords = string.Join(", ", profile.RareWords);
+        RareFirst = profile.RareFirst;
+        TargetMoveEnabled = profile.TargetMoveEnabled;
+        TargetApproachEnabled = profile.TargetApproachEnabled;
+        TargetFollowInBattle = profile.TargetFollowInBattle;
+        TargetMoveIntervalMs = profile.TargetMoveIntervalMs.ToString();
+        TargetKeepDistance = profile.TargetKeepDistance.ToString();
+        PauseRouteOnTarget = profile.PauseRouteOnTarget;
         AutoReviveEnabled = profile.AutoReviveEnabled;
         FoodEnabled = profile.FoodEnabled;
         AutoPotion = profile.AutoPotion;
         AutoMedicine = profile.AutoMedicine;
         HealPlayer = profile.HealPlayer;
         CureAtPercent = profile.CureAtPercent;
+        PlayerHealPercent = profile.PlayerHealPercent.ToString();
+        HealingCooldownMs = profile.HealingCooldownMs.ToString();
+        HealOnlyOutOfBattle = profile.HealOnlyOutOfBattle;
         ReviveHp = profile.ReviveHp.ToString();
         ReviveOutOfBattleHp = profile.ReviveOutOfBattleHp.ToString();
         ReviveItemHotkey = profile.ReviveItemHotkey;
@@ -542,6 +644,10 @@ public sealed class SettingsViewModel : ObservableObject
         FishingWaterId = profile.FishingWaterId.ToString();
         CatchEnabled = profile.CatchEnabled;
         CatchHotkey = profile.CatchHotkey;
+        CatchDelayMs = profile.CatchDelayMs.ToString();
+        CatchShinyEnabled = profile.CatchShinyEnabled;
+        ShinyBallId = profile.ShinyBallId.ToString();
+        CatchRules = string.Join(Environment.NewLine, profile.CatchEntries.Select(entry => $"{entry.Name}:{entry.CorpseId}:{entry.BallId}"));
         LootEnabled = profile.LootEnabled;
         LootHotkey = profile.LootHotkey;
         AntiAfkEnabled = profile.AntiAfkEnabled;
@@ -591,6 +697,59 @@ public sealed class SettingsViewModel : ObservableObject
         SelectedMonster = name;
         NewMonster = string.Empty;
         Feedback = "Criatura adicionada. A ordem da lista define a prioridade futura.";
+    }
+
+    private static bool TryParseCatchRules(string value,
+        out System.Collections.Generic.List<KBot.App.BotBrain.CatchEntry> entries, out string error)
+    {
+        entries = new();
+        error = string.Empty;
+        var lines = value.Split(new[] { '\r', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var line in lines)
+        {
+            var parts = line.Split(':', StringSplitOptions.TrimEntries);
+            if (parts.Length != 3 || parts[0].Length == 0 || !int.TryParse(parts[1], out var corpseId) || corpseId <= 0 ||
+                !int.TryParse(parts[2], out var ballId) || ballId < 100)
+            {
+                error = $"Regra de captura inválida: '{line}'. Use Nome:CorpseId:BallId, com IDs positivos e bola >= 100.";
+                entries.Clear();
+                return false;
+            }
+            entries.Add(new KBot.App.BotBrain.CatchEntry(parts[0], corpseId, ballId));
+        }
+        return true;
+    }
+
+    private static System.Collections.Generic.List<string> SplitList(string value) =>
+        value.Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private void OnAutomationEvent(AutomationEvent item)
+    {
+        void Add()
+        {
+            AlertHistory.Insert(0, item);
+            while (AlertHistory.Count > 250) AlertHistory.RemoveAt(AlertHistory.Count - 1);
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) Add();
+        else dispatcher.BeginInvoke(Add);
+    }
+
+    private void OnAutomationEventsCleared()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) AlertHistory.Clear();
+        else dispatcher.BeginInvoke(AlertHistory.Clear);
+    }
+
+    public void Dispose()
+    {
+        AutomationEventHub.Shared.Published -= OnAutomationEvent;
+        AutomationEventHub.Shared.Cleared -= OnAutomationEventsCleared;
+        _nativeService.Dispose();
     }
 
     private void RemoveMonster()

@@ -206,6 +206,8 @@ public sealed class KBotLifecycle : IDisposable
             _profile = BotProfileService.Load();
             Bot = BotBrainFactory.Build(_native, session.WindowHandle, _profile,
                 () => GameStateProvider.From(LastNativeStatus, CharacterSession?.State ?? CharacterPresence.Unknown, Environment.TickCount64));
+            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Automation", "brain_started",
+                "Motor de automação iniciado para o personagem detectado.", session.Pid.ToString());
         }
         else
         {
@@ -239,6 +241,14 @@ public sealed class KBotLifecycle : IDisposable
         if (_disposed || (State == state && Message == message)) return;
         State = state;
         Message = message;
+        var severity = state switch
+        {
+            KBotLifecycleState.Error => AutomationEventSeverity.Error,
+            KBotLifecycleState.Disconnected or KBotLifecycleState.ClientNotConfigured => AutomationEventSeverity.Warning,
+            _ => AutomationEventSeverity.Info
+        };
+        AutomationEventHub.Shared.Publish(severity, "Session", state.ToString(), message,
+            GameSession?.Pid.ToString() ?? string.Empty, TimeSpan.FromSeconds(1));
         Changed?.Invoke(this);
     }
 

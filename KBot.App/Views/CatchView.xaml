@@ -27,9 +27,27 @@
                     <TextBlock Text="Guarde a preferência e o atalho de captura no perfil. A detecção do alvo ainda precisa ser conectada ao cliente."
                                Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
                     <CheckBox Content="Capturar automaticamente" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding CatchEnabled}"
+                              Margin="0,0,18,12" />
+                    <CheckBox Content="Priorizar captura de shiny" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding CatchShinyEnabled}"
                               Margin="0,0,0,12" />
-                    <TextBlock Text="ATALHO DE CAPTURA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
-                    <TextBox Text="{Binding CatchHotkey, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="220" /><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                            <TextBlock Text="ATALHO DE CAPTURA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding CatchHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="ATRASO APÓS DERROTA (MS)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding CatchDelayMs, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="12,0,0,0">
+                            <TextBlock Text="ID DA BOLA DE SHINY" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding ShinyBallId, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="REGRAS POR CORPO (NOME:CORPSE ID:BALL ID)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,14,0,5" />
+                    <TextBox Text="{Binding CatchRules, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="90"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="NoWrap" FontFamily="Consolas" />
                 </StackPanel>
             </controls:CardControl>
             <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,16,0,0" />

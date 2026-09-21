@@ -2,12 +2,13 @@ namespace KBot.App.BotBrain;
 
 // Port of 0_AB_catch.lua. Priority 80 (after combat, before route).
 // A fresh corpse on our tile is evaluated by CatchSelection (explicit per-pokemon
-// line first, then shiny-by-name). Without a corpse signal yet (vision transport),
-// it degrades to the old rule: enabled + in battle -> press the ball binding.
+// line first, then shiny-by-name). Without a confirmed corpse signal it stays idle,
+// because capture ownership must never be guessed from battle state alone.
 public sealed class CatchModule : IBotModule
 {
     public string Name => "Catch";
     public int Priority => 80;
+    private string? _lastCorpseKey;
 
     public ActionIntent? Decide(GameState s, IProfileView p)
     {
@@ -15,23 +16,27 @@ public sealed class CatchModule : IBotModule
 
         if (s.CorpseId is int corpseId)
         {
+            if (s.CorpseAppearedMs <= 0) return null;
+            var corpseKey = $"{corpseId}:{s.CorpseAppearedMs}";
+            if (_lastCorpseKey == corpseKey) return null;
             // The corpse appeared on our tile at CorpseAppearedMs; that age is the
             // only "how long ago" signal we have today (there is no separate death
             // log transport), so both the my-kill and shiny-death windows share it.
             long age = s.NowMs - s.CorpseAppearedMs;
             if (age < 0) age = 0;
+            if (age < p.CatchDelayMs) return null;
             var d = CatchSelection.Evaluate(
                 corpseId, s.CorpseName ?? string.Empty, age, age,
                 p.CatchEntries, customEnabled: true,
                 shinyEnabled: p.CatchShinyEnabled, shinyBall: p.ShinyBallId,
                 shinyWords: p.RareWords);
-            return d.Throw
-                ? ActionIntent.Command("catch", $"bola:{d.BallId}:{d.Reason}")
-                : null;
+            if (!d.Throw) return null;
+            _lastCorpseKey = corpseKey;
+            return ActionIntent.Command("catch", $"bola:{d.BallId}:{d.Reason}");
         }
 
-        // No corpse read this tick -> fall back to the battle-time binding.
-        if (s.InBattle == true) return ActionIntent.Command("catch");
+        // Without a confirmed corpse the module stays idle. Pressing a ball during
+        // battle would guess ownership and can target the wrong player's corpse.
         return null;
     }
 }
@@ -327,7 +332,7 @@ public sealed class EndgameModule : IBotModule
 
     private static string ActiveRole(GameState s)
     {
-        if (s.ActivePokebarSlot is not int slot || slot < 1 || slot >= s.Pokebar.Count) return "";
+        if (s.ActivePokebarSlot is not int slot || slot < 1 || slot > s.Pokebar.Count) return "";
         return s.Pokebar[slot - 1].Name;
     }
 

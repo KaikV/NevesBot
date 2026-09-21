@@ -1,4 +1,5 @@
 using KBot.App.Models;
+using KBot.App.Services;
 
 namespace KBot.App.BotBrain;
 
@@ -14,6 +15,7 @@ public sealed class RouteModule : IBotModule
 
     private readonly List<(int X, int Y, WaypointAction Action)> _route = new();
     private int _index;
+    private bool _pausedForTarget;
     private const int TileTolerance = 1;
 
     public bool IsRunning { get; private set; }
@@ -23,15 +25,31 @@ public sealed class RouteModule : IBotModule
         _route.Clear();
         _route.AddRange(route);
         _index = 0;
+        _pausedForTarget = false;
     }
 
     public bool Start() { IsRunning = true; _index = 0; return _route.Count > 0; }
-    public void Stop() { IsRunning = false; }
+    public void Stop() { IsRunning = false; _pausedForTarget = false; }
 
     public ActionIntent? Decide(GameState s, IProfileView p)
     {
         if (!IsRunning || _index >= _route.Count) return null;
         if (!s.HasPosition) return null; // can't navigate without a fixed position
+        var targetPresent = s.HasScreenScan && s.Wilds.Any(w => w.IsAlive && w.Z == s.Z);
+        if (p.PauseRouteOnTarget && targetPresent)
+        {
+            if (!_pausedForTarget)
+                AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Route", "route_paused",
+                    "Rota pausada por alvo adquirido.");
+            _pausedForTarget = true;
+            return null;
+        }
+        if (_pausedForTarget)
+        {
+            _pausedForTarget = false;
+            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Route", "route_resumed",
+                "Rota retomada após limpar o alvo.");
+        }
 
         var (tx, ty, _) = _route[_index];
         var dx = tx - s.X;

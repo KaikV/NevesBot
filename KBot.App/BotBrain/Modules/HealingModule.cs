@@ -21,11 +21,14 @@ public sealed class HealingModule : IBotModule
         if (s.ActiveAlive == false && p.AutoRevive && !string.IsNullOrWhiteSpace(p.ReviveHotkey))
             return ActionIntent.Hotkey(p.ReviveHotkey);
 
-        var hp = s.ActiveHpPercent;
+        if (p.HealOnlyOutOfBattle && s.InBattle != false) return null;
+
+        var pokemonHp = s.ActiveHpPercent;
+        var playerHp = s.PlayerHpPercent;
 
         // 2) Cure status / medicine.
         if (p.AutoMedicine && !string.IsNullOrWhiteSpace(p.MedicineHotkey) &&
-            hp is { } v && v < p.CureAtPercent && CooldownOk(s.NowMs))
+            pokemonHp is { } v && v < p.CureAtPercent && CooldownOk(s.NowMs, p.HealingCooldownMs))
         {
             _lastCureAtMs = s.NowMs;
             return ActionIntent.Hotkey(p.MedicineHotkey);
@@ -33,7 +36,7 @@ public sealed class HealingModule : IBotModule
 
         // 3) Heal player hp.
         if (p.HealPlayer && !string.IsNullOrWhiteSpace(p.HealHotkey) &&
-            hp is { } w && w < p.CureAtPercent && CooldownOk(s.NowMs))
+            playerHp is { } w && w < p.PlayerHealPercent && CooldownOk(s.NowMs, p.HealingCooldownMs))
         {
             _lastCureAtMs = s.NowMs;
             return ActionIntent.Hotkey(p.HealHotkey);
@@ -41,7 +44,7 @@ public sealed class HealingModule : IBotModule
 
         // 4) Potion/food is lower priority than medicine+heal; handled last.
         if (p.AutoPotion && !string.IsNullOrWhiteSpace(p.FoodHotkey) &&
-            hp is { } x && x < p.CureAtPercent && CooldownOk(s.NowMs))
+            pokemonHp is { } x && x < p.CureAtPercent && CooldownOk(s.NowMs, p.HealingCooldownMs))
         {
             _lastCureAtMs = s.NowMs;
             return ActionIntent.Hotkey(p.FoodHotkey);
@@ -50,7 +53,8 @@ public sealed class HealingModule : IBotModule
         return null;
     }
 
-    private bool CooldownOk(long now) => now - _lastCureAtMs >= 1500; // same 1.5s spacing socorro uses
+    private bool CooldownOk(long now, int configuredMs) =>
+        now - _lastCureAtMs >= Math.Clamp(configuredMs, 250, 60_000);
 
     internal void ResetTimers() => _lastCureAtMs = 0;
 }

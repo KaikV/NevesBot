@@ -32,6 +32,8 @@ public sealed class CavebotWaypoint : INotifyPropertyChanged
     public int Y { get; init; }
     public int Z { get; init; }
     public WaypointAction Action { get; init; }
+    public string Argument { get; init; } = string.Empty;
+    public int DelayMs { get; init; }
     public string Position => $"{X}, {Y}, {Z}";
     public string DisplayName => string.IsNullOrWhiteSpace(Name) ? Action.ToString() : Name;
 }

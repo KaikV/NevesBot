@@ -76,6 +76,21 @@
                             <TextBox Text="{Binding HealHotkey, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                     </Grid>
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <TextBlock Text="HP DO PERSONAGEM (%)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding PlayerHealPercent, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="COOLDOWN DE CURA (MS)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding HealingCooldownMs, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="2" Content="Curar somente fora de batalha" Style="{StaticResource ToggleOptionStyle}"
+                                  IsChecked="{Binding HealOnlyOutOfBattle}" VerticalAlignment="Bottom" />
+                    </Grid>
                 </StackPanel>
             </controls:CardControl>
 

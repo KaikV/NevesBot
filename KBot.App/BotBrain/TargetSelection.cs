@@ -34,9 +34,23 @@ public static class TargetSelection
         int range,
         bool rareFirst,
         IReadOnlyList<string> rareWords)
+        => Pick(wilds, px, py, pz, range, rareFirst, rareWords,
+            System.Array.Empty<string>(), System.Array.Empty<string>());
+
+    public static ScannedCreature? Pick(
+        IEnumerable<ScannedCreature> wilds,
+        int px, int py, int pz,
+        int range,
+        bool rareFirst,
+        IReadOnlyList<string> rareWords,
+        IReadOnlyList<string> preferredSpecies,
+        IReadOnlyList<string> ignoredSpecies)
     {
         ScannedCreature? bestRare = null;
         int bestRareD = int.MaxValue;
+        ScannedCreature? bestPreferred = null;
+        int bestPreferredIndex = int.MaxValue;
+        int bestPreferredD = int.MaxValue;
         ScannedCreature? best = null;
         int bestD = int.MaxValue;
 
@@ -44,6 +58,7 @@ public static class TargetSelection
         {
             if (!w.IsMonster || !w.IsAlive) continue;          // only alive monsters
             if (w.Z != pz) continue;                            // other floor: out of reach
+            if (MatchesAny(w.Name, ignoredSpecies)) continue;
             var d = System.Math.Max(System.Math.Abs(w.X - px), System.Math.Abs(w.Y - py));
             if (d > range) continue;                            // beyond attack range
 
@@ -51,9 +66,33 @@ public static class TargetSelection
             {
                 if (d < bestRareD) { bestRareD = d; bestRare = w; }
             }
+            var preferredIndex = MatchIndex(w.Name, preferredSpecies);
+            if (preferredIndex >= 0 &&
+                (preferredIndex < bestPreferredIndex ||
+                 (preferredIndex == bestPreferredIndex && d < bestPreferredD)))
+            {
+                bestPreferredIndex = preferredIndex;
+                bestPreferredD = d;
+                bestPreferred = w;
+            }
             if (d < bestD) { bestD = d; best = w; }             // plain closest (any)
         }
 
-        return bestRare ?? best;
+        return bestRare ?? bestPreferred ?? best;
+    }
+
+    private static bool MatchesAny(string name, IReadOnlyList<string> values) =>
+        MatchIndex(name, values) >= 0;
+
+    private static int MatchIndex(string name, IReadOnlyList<string> values)
+    {
+        for (var i = 0; i < values.Count; i++)
+        {
+            var wanted = values[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(wanted)) continue;
+            if (string.Equals(name, wanted, System.StringComparison.OrdinalIgnoreCase) ||
+                name.Contains(wanted, System.StringComparison.OrdinalIgnoreCase)) return i;
+        }
+        return -1;
     }
 }

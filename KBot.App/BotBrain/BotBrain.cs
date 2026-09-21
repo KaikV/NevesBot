@@ -1,4 +1,5 @@
 using KBot.App.Models;
+using KBot.App.Services;
 
 namespace KBot.App.BotBrain;
 
@@ -65,15 +66,24 @@ public sealed class BotBrain : IDisposable
         {
             ActionIntent? intent;
             try { intent = module.Decide(state, _profile); }
-            catch { intent = null; continue; } // a bad module must not stall the loop
+            catch (Exception ex)
+            {
+                AutomationEventHub.Shared.Publish(AutomationEventSeverity.Error, module.Name,
+                    "module_failed", ex.Message, module.Name);
+                continue; // a bad module must not stall the loop
+            }
 
             if (intent is null) continue;
 
             if (_sink.Execute(intent, state))
             {
                 SetLog($"{module.Name}: {intent}");
+                AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, module.Name,
+                    "action_executed", Log, module.Name, TimeSpan.FromSeconds(1));
                 return intent;
             }
+            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Warning, module.Name,
+                "action_rejected", $"Ação recusada pelo canal: {intent}", module.Name);
             // sink refused -> fall through so a lower-priority module can act
         }
         return null;

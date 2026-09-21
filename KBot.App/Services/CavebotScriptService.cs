@@ -1,16 +1,15 @@
 using KBot.App.Models;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Text.Json;
 
 namespace KBot.App.Services;
 
 public static class CavebotScriptService
 {
-    public static IReadOnlyList<CavebotWaypoint> Parse(string json)
+    public static IReadOnlyList<CavebotWaypoint> Parse(string json) => ParseDocument(json).Waypoints;
+
+    public static CavebotRouteDocument ParseDocument(string json)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -40,37 +39,60 @@ public static class CavebotScriptService
             if (actionElement.ValueKind != JsonValueKind.String)
                 throw new InvalidDataException($"Ação inválida no waypoint {waypoints.Count + 1}.");
             var actionText = actionElement.GetString();
-            if (!Enum.TryParse<WaypointAction>(actionText, true, out var action) ||
-                !Enum.IsDefined(action))
+            if (!Enum.TryParse<WaypointAction>(actionText, true, out var action) || !Enum.IsDefined(action))
                 throw new InvalidDataException($"Ação inválida no waypoint {waypoints.Count + 1}: {actionText}.");
 
-            string name = TryGet(item, "name", out var nameElement) && nameElement.ValueKind == JsonValueKind.String
-                ? nameElement.GetString() ?? string.Empty
-                : string.Empty;
+            var name = ReadString(item, "name");
+            var argument = ReadString(item, "argument");
+            var delayMs = ReadInt(item, "delayMs", 0);
+            var explicitOrder = ReadInt(item, "order", waypoints.Count + 1);
             waypoints.Add(new CavebotWaypoint
             {
-                Number = waypoints.Count + 1,
+                Number = explicitOrder > 0 ? explicitOrder : waypoints.Count + 1,
                 Name = name,
                 X = x,
                 Y = y,
                 Z = z,
-                Action = action
+                Action = action,
+                Argument = argument,
+                DelayMs = Math.Clamp(delayMs, 0, 600_000)
             });
         }
-        return waypoints;
+
+        var ordered = waypoints.OrderBy(w => w.Number).ToList();
+        for (var i = 0; i < ordered.Count; i++) ordered[i].Number = i + 1;
+        return new CavebotRouteDocument
+        {
+            SchemaVersion = Math.Max(1, ReadInt(root, "schemaVersion", 1)),
+            RouteId = ReadString(root, "routeId") is { Length: > 0 } id ? id : Guid.NewGuid().ToString("N"),
+            Name = ReadString(root, "name") is { Length: > 0 } routeName ? routeName : "Rota importada",
+            Version = Math.Max(1, ReadInt(root, "version", 1)),
+            Waypoints = ordered
+        };
     }
 
-    public static string Serialize(IEnumerable<CavebotWaypoint> waypoints) =>
-        JsonSerializer.Serialize(new
+    public static string Serialize(IEnumerable<CavebotWaypoint> waypoints) => Serialize(new CavebotRouteDocument
+    {
+        Waypoints = waypoints.ToList()
+    });
+
+    public static string Serialize(CavebotRouteDocument route) => JsonSerializer.Serialize(new
+    {
+        schemaVersion = 2,
+        format = "kbot-route-v2",
+        routeId = route.RouteId,
+        name = route.Name,
+        version = Math.Max(1, route.Version),
+        waypoints = route.Waypoints.Select((w, index) => new
         {
-            format = "kbot-route-v1",
-            waypoints = waypoints.Select(w => new
-            {
-                name = w.Name,
-                position = new { x = w.X, y = w.Y, z = w.Z },
-                action = w.Action.ToString()
-            })
-        }, new JsonSerializerOptions { WriteIndented = true });
+            order = index + 1,
+            name = w.Name,
+            position = new { x = w.X, y = w.Y, z = w.Z },
+            action = w.Action.ToString(),
+            argument = w.Argument,
+            delayMs = Math.Max(0, w.DelayMs)
+        })
+    }, new JsonSerializerOptions { WriteIndented = true });
 
     private static bool TryGet(JsonElement element, string name, out JsonElement value)
     {
@@ -86,6 +108,16 @@ public static class CavebotScriptService
         return false;
     }
 
+    private static string ReadString(JsonElement element, string name) =>
+        TryGet(element, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? string.Empty
+            : string.Empty;
+
+    private static int ReadInt(JsonElement element, string name, int fallback) =>
+        TryGet(element, name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var result)
+            ? result
+            : fallback;
+
     private static (int X, int Y, int Z) ReadPosition(JsonElement position)
     {
         if (position.ValueKind == JsonValueKind.String)
@@ -98,9 +130,9 @@ public static class CavebotScriptService
                 return (x, y, z);
         }
         else if (position.ValueKind == JsonValueKind.Object &&
-                 TryGet(position, "x", out var xElement) && xElement.ValueKind == JsonValueKind.Number && xElement.TryGetInt32(out var x) &&
-                 TryGet(position, "y", out var yElement) && yElement.ValueKind == JsonValueKind.Number && yElement.TryGetInt32(out var y) &&
-                 TryGet(position, "z", out var zElement) && zElement.ValueKind == JsonValueKind.Number && zElement.TryGetInt32(out var z))
+                 TryGet(position, "x", out var xElement) && xElement.TryGetInt32(out var x) &&
+                 TryGet(position, "y", out var yElement) && yElement.TryGetInt32(out var y) &&
+                 TryGet(position, "z", out var zElement) && zElement.TryGetInt32(out var z))
             return (x, y, z);
 
         throw new InvalidDataException("Waypoint com posição inválida.");

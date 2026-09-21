@@ -27,6 +27,7 @@ public sealed record GameState
     // Battle / combat awareness. Null = unknown (offset pending or vision off).
     public bool? InBattle { get; init; }
     public int? EnemyCount { get; init; }      // number of hostile creatures on screen
+    public double? PlayerHpPercent { get; init; } // character hp (0..100), null if unknown
     public double? ActiveHpPercent { get; init; } // our active pokemon hp (0..100), null if unknown
     public bool? ActiveAlive { get; init; }     // null if unknown; false => fainted
     // The CHARACTER (player) level, null until readable - drives the level-up alert edge.
@@ -61,6 +62,7 @@ public sealed record GameState
     // The full list of alive wilds from the screen scan (ETAPA 2). Empty until the
     // vision transport exists; modules that need a real target degrade to null.
     public IReadOnlyList<ScannedCreature> Wilds { get; init; } = System.Array.Empty<ScannedCreature>();
+    public bool HasScreenScan { get; init; }
 
     // Bag item counts for the supply alerts (n3_alarmes "supply"). A NULL or MISSING
     // key means "can't count this one" (bag closed / never seen) - which must read as

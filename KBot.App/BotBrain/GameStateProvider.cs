@@ -26,7 +26,8 @@ public static class GameStateProvider
                 ClientConnected = status.ClientFound,
                 InGame = presence == CharacterPresence.InGame,
                 HasPosition = status.HasPosition, X = status.PosX, Y = status.PosY, Z = status.PosZ,
-                InBattle = null, ActiveHpPercent = null, ActiveAlive = null, Pulled = false, NowMs = nowMs
+                InBattle = null, PlayerHpPercent = null, ActiveHpPercent = null,
+                ActiveAlive = null, HasScreenScan = false, Pulled = false, NowMs = nowMs
             };
 
         return new GameState
@@ -42,6 +43,8 @@ public static class GameStateProvider
             // poke is standing out there - the two signals socorro/targeting need.
             EnemyCount = s.Wilds.Count,
             Wilds = s.Wilds,
+            HasScreenScan = true,
+            PlayerHpPercent = null,
             ActiveHpPercent = null,
             ActiveAlive = null,
             FieldHasPoke = s.PokeOnField(),

@@ -96,7 +96,14 @@ public static class BotProfileService
 
     public static BotProfile Normalize(BotProfile profile)
     {
+        profile.SchemaVersion = Math.Max(2, profile.SchemaVersion);
         profile.MonstersToAttack ??= new List<string>();
+        profile.IgnoredMonsters ??= new List<string>();
+        profile.RareWords ??= new List<string>();
+        profile.CatchEntries ??= new List<KBot.App.BotBrain.CatchEntry>();
+        profile.MonstersToAttack = NormalizeNames(profile.MonstersToAttack);
+        profile.IgnoredMonsters = NormalizeNames(profile.IgnoredMonsters);
+        profile.RareWords = NormalizeNames(profile.RareWords);
         profile.Spells ??= new List<SpellSetting>();
         profile.Spells = Enumerable.Range(1, 9).Select(i =>
         {
@@ -111,6 +118,19 @@ public static class BotProfileService
         }).ToList();
         profile.ReviveHp = Math.Max(0, profile.ReviveHp);
         profile.ReviveOutOfBattleHp = Math.Max(0, profile.ReviveOutOfBattleHp);
+        profile.PlayerHealPercent = Math.Clamp(profile.PlayerHealPercent, 1, 100);
+        profile.CureAtPercent = Math.Clamp(profile.CureAtPercent, 1, 100);
+        profile.HealingCooldownMs = Math.Clamp(profile.HealingCooldownMs, 250, 60_000);
+        profile.AttackRange = Math.Clamp(profile.AttackRange, 1, 20);
+        profile.TargetMoveIntervalMs = Math.Clamp(profile.TargetMoveIntervalMs, 100, 60_000);
+        profile.TargetKeepDistance = Math.Clamp(profile.TargetKeepDistance, 0, 20);
+        profile.CatchDelayMs = Math.Clamp(profile.CatchDelayMs, 0, 60_000);
+        profile.ShinyBallId = profile.ShinyBallId >= 100 ? profile.ShinyBallId : 0;
+        profile.CatchEntries = profile.CatchEntries
+            .Where(entry => entry.CorpseId > 0 && entry.BallId >= 100 && !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => new KBot.App.BotBrain.CatchEntry(entry.Name.Trim(), entry.CorpseId, entry.BallId))
+            .Distinct()
+            .ToList();
         profile.ReviveItemHotkey = NormalizeHotkey(profile.ReviveItemHotkey, "F9");
         profile.FoodHotkey = NormalizeHotkey(profile.FoodHotkey, "F10");
         profile.FishingHotkey = NormalizeHotkey(profile.FishingHotkey, "Ctrl+Z");
@@ -155,6 +175,12 @@ public static class BotProfileService
 
     private static string NormalizeHotkey(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().Trim('{', '}');
+
+    private static List<string> NormalizeNames(IEnumerable<string> values) => values
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Select(value => value.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     private static bool TryGet(JsonElement element, string name, out JsonElement value)
     {

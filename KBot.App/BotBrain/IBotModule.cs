@@ -29,6 +29,9 @@ public interface IProfileView
     bool HealPlayer { get; }                    // direct hp heal
     string? HealHotkey { get; }
     int CureAtPercent { get; }                   // below this % hp, healing may act
+    int PlayerHealPercent { get; }
+    int HealingCooldownMs { get; }
+    bool HealOnlyOutOfBattle { get; }
 
     // Targeting / combat
     bool AttackerEnabled { get; }
@@ -39,6 +42,14 @@ public interface IProfileView
     int AttackRange { get; }                     // Chebyshev tiles a target must be within to be considered
     bool RareFirst { get; }                      // rare/shiny words take total priority over closest
     IReadOnlyList<string> RareWords { get; }     // substrings (e.g. "shiny","elite") that mark a priority target
+    IReadOnlyList<string> MonstersToAttack { get; }
+    IReadOnlyList<string> IgnoredMonsters { get; }
+    bool TargetMoveEnabled { get; }
+    bool TargetApproachEnabled { get; }
+    bool TargetFollowInBattle { get; }
+    int TargetMoveIntervalMs { get; }
+    int TargetKeepDistance { get; }
+    bool PauseRouteOnTarget { get; }
 
     // Misc features
     bool FishingEnabled { get; }
@@ -53,6 +64,7 @@ public interface IProfileView
     IReadOnlyList<CatchEntry> CatchEntries { get; }
     bool CatchShinyEnabled { get; }
     int ShinyBallId { get; }
+    int CatchDelayMs { get; }
     bool LootEnabled { get; }
     string? LootHotkey { get; }
     bool AntiAfkEnabled { get; }

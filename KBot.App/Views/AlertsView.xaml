@@ -60,6 +60,35 @@
                                Foreground="{DynamicResource MutedText}" FontSize="11" Margin="0,6,0,0" />
                 </StackPanel>
             </controls:CardControl>
+            <controls:CardControl Title="HISTÓRICO OPERACIONAL" Margin="0,0,0,16">
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="Eventos da sessão, bloqueios e ações executadas. Repetições são agrupadas por alguns segundos."
+                                   Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,110,0" />
+                        <Button Content="Limpar histórico" Command="{Binding ClearAlertHistoryCommand}" HorizontalAlignment="Right" />
+                    </Grid>
+                    <Border BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" CornerRadius="8" MaxHeight="280">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding AlertHistory}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="10,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62" /><ColumnDefinition Width="78" />
+                                                <ColumnDefinition Width="100" /><ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource MutedText}" FontFamily="Consolas" />
+                                            <TextBlock Grid.Column="1" Text="{Binding SeverityText}" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Source}" Foreground="{DynamicResource SecondaryText}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding Message}" Foreground="{DynamicResource PrimaryText}" TextWrapping="Wrap" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </controls:CardControl>
             <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,16,0,0" />
         </StackPanel>
     </ScrollViewer>

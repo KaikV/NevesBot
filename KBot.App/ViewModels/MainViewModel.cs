@@ -13,6 +13,7 @@ namespace KBot.App.ViewModels
         private string _currentSection = "Dashboard";
         private readonly Dictionary<string, UserControl> _moduleViews;
         private readonly CavebotViewModel _cavebotViewModel;
+        private readonly SettingsViewModel _settingsViewModel;
 
         public MainViewModel(KBotLifecycle lifecycle)
         {
@@ -20,16 +21,16 @@ namespace KBot.App.ViewModels
             CavebotView = new CavebotView();
             _cavebotViewModel = CavebotView.DataContext as CavebotViewModel ?? new CavebotViewModel();
             if (!ReferenceEquals(CavebotView.DataContext, _cavebotViewModel)) CavebotView.DataContext = _cavebotViewModel;
-            var profile = new SettingsViewModel();
-            SettingsView = new SettingsView(profile, "Settings");
+            _settingsViewModel = new SettingsViewModel();
+            SettingsView = new SettingsView(_settingsViewModel, "Settings");
             _moduleViews = new Dictionary<string, UserControl>
             {
-                ["Target"] = new TargetView(profile),
-                ["Healing"] = new HealingView(profile),
-                ["Catch"] = new CatchView(profile),
-                ["Loot"] = new LootView(profile),
-                ["Fishing"] = new FishingView(profile),
-                ["Alerts"] = new AlertsView(profile),
+                ["Target"] = new TargetView(_settingsViewModel),
+                ["Healing"] = new HealingView(_settingsViewModel),
+                ["Catch"] = new CatchView(_settingsViewModel),
+                ["Loot"] = new LootView(_settingsViewModel),
+                ["Fishing"] = new FishingView(_settingsViewModel),
+                ["Alerts"] = new AlertsView(_settingsViewModel),
                 ["Settings"] = SettingsView
             };
             _currentView = DashboardView;
@@ -83,6 +84,7 @@ namespace KBot.App.ViewModels
         {
             await DashboardView.DisposeAsync();
             _cavebotViewModel.Dispose();
+            _settingsViewModel.Dispose();
         }
 
         private void Navigate(string? section)

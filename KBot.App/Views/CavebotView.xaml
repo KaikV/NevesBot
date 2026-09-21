@@ -75,15 +75,19 @@
 
                     <controls:CardControl Title="ADICIONAR WAYPOINT">
                         <Grid>
-                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="70" /><ColumnDefinition Width="70" /><ColumnDefinition Width="70" /></Grid.ColumnDefinitions>
                             <TextBox Grid.Column="0" Margin="0,0,8,8" Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}" ToolTip="Nome do ponto" />
                             <TextBox Grid.Column="1" Margin="0,0,8,8" Text="{Binding NewX, UpdateSourceTrigger=PropertyChanged}" ToolTip="X" />
                             <TextBox Grid.Column="2" Margin="0,0,8,8" Text="{Binding NewY, UpdateSourceTrigger=PropertyChanged}" ToolTip="Y" />
                             <TextBox Grid.Column="3" Margin="0,0,0,8" Text="{Binding NewZ, UpdateSourceTrigger=PropertyChanged}" ToolTip="Z" />
-                            <ComboBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{Binding Actions}" SelectedItem="{Binding NewAction}"
+                            <TextBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Margin="0,0,8,8"
+                                     Text="{Binding NewArgument, UpdateSourceTrigger=PropertyChanged}" ToolTip="Argumento da ação" />
+                            <TextBox Grid.Row="1" Grid.Column="3" Margin="0,0,0,8"
+                                     Text="{Binding NewDelayMs, UpdateSourceTrigger=PropertyChanged}" ToolTip="Delay em ms" />
+                            <ComboBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" ItemsSource="{Binding Actions}" SelectedItem="{Binding NewAction}"
                                       Background="{DynamicResource ElevatedBackground}" Foreground="{DynamicResource PrimaryText}" Padding="7" />
-                            <Button Grid.Row="1" Grid.Column="3" Content="Adicionar" Command="{Binding AddCommand}"
+                            <Button Grid.Row="2" Grid.Column="3" Content="Adicionar" Command="{Binding AddCommand}"
                                     Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0" />
                         </Grid>
                     </controls:CardControl>

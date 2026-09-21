@@ -21,6 +21,9 @@ public sealed class ProfileView : IProfileView
     public bool AutoMedicine => _p.AutoMedicine;
     public bool HealPlayer => _p.HealPlayer;
     public int CureAtPercent => _p.CureAtPercent;
+    public int PlayerHealPercent => _p.PlayerHealPercent;
+    public int HealingCooldownMs => _p.HealingCooldownMs;
+    public bool HealOnlyOutOfBattle => _p.HealOnlyOutOfBattle;
     public string MedicineHotkey => _p.MedicineHotkey;
     public string HealHotkey => _p.HealHotkey;
     public bool AttackerEnabled => _p.AttackerEnabled;
@@ -32,6 +35,13 @@ public sealed class ProfileView : IProfileView
     public bool RareFirst => _p.RareFirst;
     public IReadOnlyList<string> RareWords => _p.RareWords;
     public IReadOnlyList<string> MonstersToAttack => _p.MonstersToAttack;
+    public IReadOnlyList<string> IgnoredMonsters => _p.IgnoredMonsters;
+    public bool TargetMoveEnabled => _p.TargetMoveEnabled;
+    public bool TargetApproachEnabled => _p.TargetApproachEnabled;
+    public bool TargetFollowInBattle => _p.TargetFollowInBattle;
+    public int TargetMoveIntervalMs => _p.TargetMoveIntervalMs;
+    public int TargetKeepDistance => _p.TargetKeepDistance;
+    public bool PauseRouteOnTarget => _p.PauseRouteOnTarget;
     public bool FishingEnabled => _p.FishingEnabled;
     public string? FishingHotkey => _p.FishingHotkey;
     public int FishingDelaySeconds => _p.FishingDelaySeconds;
@@ -44,6 +54,7 @@ public sealed class ProfileView : IProfileView
     public IReadOnlyList<CatchEntry> CatchEntries => _p.CatchEntries;
     public bool CatchShinyEnabled => _p.CatchShinyEnabled;
     public int ShinyBallId => _p.ShinyBallId;
+    public int CatchDelayMs => _p.CatchDelayMs;
     public bool LootEnabled => _p.LootEnabled;
     public string? LootHotkey => _p.LootHotkey;
     public bool AntiAfkEnabled => _p.AntiAfkEnabled;

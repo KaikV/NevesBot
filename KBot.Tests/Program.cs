@@ -19,6 +19,21 @@ Check(imported[1].Action == WaypointAction.Wait, "Legacy action");
 var roundTrip = CavebotScriptService.Parse(CavebotScriptService.Serialize(imported));
 Check(roundTrip.Count == 2 && roundTrip[0].Name == "Entrada" && roundTrip[1].Y == 3455, "KBot round trip");
 
+var routeV2 = new CavebotRouteDocument
+{
+    RouteId = "route-stable-id",
+    Name = "Teste",
+    Version = 3,
+    Waypoints = new[]
+    {
+        new CavebotWaypoint { Number = 1, X = 10, Y = 20, Z = 7, Action = WaypointAction.Wait, Argument = "safe", DelayMs = 1250 }
+    }
+};
+var routeV2RoundTrip = CavebotScriptService.ParseDocument(CavebotScriptService.Serialize(routeV2));
+Check(routeV2RoundTrip.RouteId == "route-stable-id" && routeV2RoundTrip.Name == "Teste" && routeV2RoundTrip.Version == 3 &&
+      routeV2RoundTrip.Waypoints[0].Argument == "safe" && routeV2RoundTrip.Waypoints[0].DelayMs == 1250,
+      "Route v2 preserves identity, version and waypoint arguments");
+
 var invalidRejected = false;
 try { CavebotScriptService.Parse("{\"waypoints\":[{\"position\":\"bad\",\"action\":\"Walk\"}]}"); }
 catch (InvalidDataException) { invalidRejected = true; }
@@ -119,6 +134,30 @@ var prof = new ProfileView(new BotProfile
     Check(b3.Tick() is null, "Healing skips when hp unknown");
 }
 
+// Player healing uses its own HP signal and respects the out-of-battle policy.
+{
+    var healingProfile = new ProfileView(new BotProfile
+    {
+        AutoMedicine = false,
+        AutoPotion = false,
+        HealPlayer = true,
+        HealHotkey = "F12",
+        PlayerHealPercent = 80,
+        HealingCooldownMs = 250,
+        HealOnlyOutOfBattle = true
+    });
+    var module = new HealingModule();
+    Check(module.Decide(new GameState
+    {
+        ClientConnected = true, InGame = true, NowMs = 1000, InBattle = false, PlayerHpPercent = 60
+    }, healingProfile) is { Channel: ActionChannel.Hotkey, Payload: "F12" }, "Player heal uses player HP");
+    module.ResetTimers();
+    Check(module.Decide(new GameState
+    {
+        ClientConnected = true, InGame = true, NowMs = 1000, InBattle = true, PlayerHpPercent = 60
+    }, healingProfile) is null, "Out-of-battle healing stays blocked in combat");
+}
+
 // Targeting: in battle area-combo; one-by-one overrides to single.
 {
     var b = new BotBrain(new FakeSink(), () => new GameState
@@ -155,6 +194,22 @@ var prof = new ProfileView(new BotProfile
     { ClientConnected = true, InGame = true, HasPosition = true, NowMs = 0, X = 10, Y = 16, Z = 0 }, new ProfileView(new BotProfile()));
     b2.Register(route);
     Check(b2.Tick() is { Channel: ActionChannel.Move, Payload: "W" }, "Route steps toward next waypoint");
+}
+
+// Route pause on target preserves the waypoint index and resumes after a clear scan.
+{
+    var route = new RouteModule();
+    route.Load(new[] { (5, 0, WaypointAction.Walk) });
+    route.Start();
+    var p = new ProfileView(new BotProfile { PauseRouteOnTarget = true });
+    var withTarget = new GameState
+    {
+        ClientConnected = true, InGame = true, HasPosition = true, HasScreenScan = true,
+        X = 0, Y = 0, Z = 0, Wilds = new[] { new ScannedCreature(1, 50, 1, 0, 0, "Pidgey") }
+    };
+    Check(route.Decide(withTarget, p) is null, "Route pauses while a target is present");
+    Check(route.Decide(withTarget with { Wilds = Array.Empty<ScannedCreature>() }, p) is { Channel: ActionChannel.Move, Payload: "D" },
+        "Route resumes the same waypoint after target clears");
 }
 
 // Alerts: pulled flag raises a pulled alert command.
@@ -249,7 +304,17 @@ var prof = new ProfileView(new BotProfile
         MedicineHotkey = "F11;curar~x", // chars needing escape
         AntiAfkEnabled = true,
         AntiAfkIdleSeconds = 50,
-        MonstersToAttack = { "Mimikyu", "Pikachu" }
+        TargetMoveIntervalMs = 1700,
+        TargetKeepDistance = 2,
+        PlayerHealPercent = 72,
+        HealingCooldownMs = 900,
+        CatchDelayMs = 250,
+        CatchShinyEnabled = true,
+        ShinyBallId = 12001,
+        CatchEntries = { new("Gengar", 20011, 25001) },
+        MonstersToAttack = { "Mimikyu", "Pikachu" },
+        IgnoredMonsters = { "Rattata" },
+        RareWords = new() { "crystal" }
     };
     var code = ConfigShareService.Export(src);
     Check(code.StartsWith("KPB1:"), "Share code starts with version");
@@ -267,6 +332,13 @@ var prof = new ProfileView(new BotProfile
     Check(dst.MedicineHotkey == "F11;curar~x", "Share import unescapes specials");
     Check(dst.AntiAfkEnabled && dst.AntiAfkIdleSeconds >= 15, "Share import carries anti-AFK fields");
     Check(dst.MonstersToAttack.SequenceEqual(new[] { "Mimikyu", "Pikachu" }), "Share import carries monster list");
+    Check(dst.IgnoredMonsters.SequenceEqual(new[] { "Rattata" }) && dst.RareWords.SequenceEqual(new[] { "crystal" }),
+        "Share import carries target filter lists");
+    Check(dst.TargetMoveIntervalMs == 1700 && dst.TargetKeepDistance == 2 && dst.PlayerHealPercent == 72 &&
+          dst.HealingCooldownMs == 900 && dst.CatchDelayMs == 250,
+        "Share import carries target, healing and capture timing");
+    Check(dst.CatchShinyEnabled && dst.ShinyBallId == 12001 && dst.CatchEntries is [{ Name: "Gengar", CorpseId: 20011, BallId: 25001 }],
+        "Share import carries shiny and per-corpse capture rules");
     Check(dst.AutoSummon == true, "Share import leaves unlisted field untouched");
 
     // Truncated code -> rejected (checksum/format fail), not applied.
@@ -300,6 +372,17 @@ var prof = new ProfileView(new BotProfile
     var ok = ConfigDiagnosticsService.Diagnose(filled, ready);
     Check(ok.Any(i => i.Feature == "Leitura de memória" && i.Status == "PRONTO"), "Diagnostics reports reader ready");
     Check(ok.Any(i => i.Feature == "Alvos" && i.Status == "PRONTO"), "Diagnostics reports alvos present");
+}
+
+{
+    var events = new AutomationEventHub();
+    Check(events.Publish(AutomationEventSeverity.Warning, "Cura", "source_missing", "HP indisponível", "42"),
+        "First operational event is accepted");
+    Check(!events.Publish(AutomationEventSeverity.Warning, "Cura", "source_missing", "HP indisponível", "42"),
+        "Repeated operational event is deduplicated");
+    Check(events.Snapshot().Count == 1, "Operational history keeps one deduplicated event");
+    events.Clear();
+    Check(events.Snapshot().Count == 0, "Operational history clears");
 }
 
 static string ConfigShareServiceChecksumHelper(string body)
@@ -643,6 +726,14 @@ static void RunTargetChecks()
         Check(TargetSelection.Pick(Array.Empty<ScannedCreature>(), 0, 0, 0, 7, true, rare) is null,
             "No target on an empty screen");
     }
+
+    // E) Explicit priority order wins among normal targets; ignored names never enter.
+    {
+        var wilds = new[] { W("Pidgey", 1, 0), W("Eevee", 4, 0), W("Rattata", 2, 0) };
+        var picked = TargetSelection.Pick(wilds, 0, 0, 0, 7, false, rare,
+            new[] { "Eevee", "Pidgey" }, new[] { "Rattata" });
+        Check(picked?.Name == "Eevee", "Preferred species order wins and ignored species is filtered");
+    }
 }
 
 static void RunCatchChecks()
@@ -699,19 +790,25 @@ static void RunCatchChecks()
         var fresh = new GameState
         {
             ClientConnected = true, InGame = true, NowMs = 1000,
-            CorpseId = 20011, CorpseName = "corpse", CorpseAppearedMs = 900
+            CorpseId = 20011, CorpseName = "corpse", CorpseAppearedMs = 700
         };
-        Check(mod.Decide(fresh, p) is { Channel: ActionChannel.Command, Payload: "catch:bola:25001:Gengar" },
-            $"Module throws the mapped ball for our fresh corpse (got {mod.Decide(fresh, p)})");
+        var firstCatch = mod.Decide(fresh, p);
+        Check(firstCatch is { Channel: ActionChannel.Command, Payload: "catch:bola:25001:Gengar" },
+            $"Module throws the mapped ball for our fresh corpse (got {firstCatch})");
+        Check(mod.Decide(fresh with { NowMs = 1500 }, p) is null,
+            "Same corpse instance is never captured twice");
+
+        var waiting = fresh with { CorpseAppearedMs = 900 };
+        Check(new CatchModule().Decide(waiting, p) is null,
+            "Capture waits for the configured post-defeat delay");
 
         // Stale corpse (> MyDeathWindowMs since appearance) -> someone else's -> silent.
         var stale = fresh with { CorpseAppearedMs = -9000 };
         Check(mod.Decide(stale, p) is null, "Stale corpse: module stays silent");
 
-        // No corpse read but in battle -> old fallback keeps working.
+        // No confirmed corpse means no capture; ownership must never be guessed.
         var battle = new GameState { ClientConnected = true, InGame = true, NowMs = 1000, InBattle = true };
-        Check(mod.Decide(battle, p) is { Channel: ActionChannel.Command, Payload: "catch" },
-            "No corpse read: falls back to the battle binding");
+        Check(mod.Decide(battle, p) is null, "No corpse read: capture stays idle");
     }
 }
 

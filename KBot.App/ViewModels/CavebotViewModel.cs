@@ -17,10 +17,14 @@ public sealed class CavebotViewModel : ObservableObject
     private string _newY = string.Empty;
     private string _newZ = string.Empty;
     private string _newName = string.Empty;
+    private string _newArgument = string.Empty;
+    private string _newDelayMs = "0";
     private WaypointAction _newAction = WaypointAction.Walk;
     private string _feedback = "Importe uma rota JSON ou adicione seu primeiro waypoint.";
     private string _routeName = "Nova rota";
     private string? _currentFile;
+    private string _routeId = Guid.NewGuid().ToString("N");
+    private int _routeVersion = 1;
     private readonly NativeService _nativeService = new();
     private readonly CavebotNavigator _navigator;
 
@@ -57,11 +61,13 @@ public sealed class CavebotViewModel : ObservableObject
     public string NewY { get => _newY; set => Set(ref _newY, value); }
     public string NewZ { get => _newZ; set => Set(ref _newZ, value); }
     public string NewName { get => _newName; set => Set(ref _newName, value); }
+    public string NewArgument { get => _newArgument; set => Set(ref _newArgument, value); }
+    public string NewDelayMs { get => _newDelayMs; set => Set(ref _newDelayMs, value); }
     public WaypointAction NewAction { get => _newAction; set => Set(ref _newAction, value); }
     public string Feedback { get => _feedback; private set => Set(ref _feedback, value); }
     public string RouteName { get => _routeName; private set => Set(ref _routeName, value); }
     public string NavigatorStatus => _navigator.Status;
-    public bool CanStartRoute => _navigator is { IsRunning: false };
+    public bool CanStartRoute => HasWaypoints && _navigator is { IsRunning: false };
     public bool RouteRunning => _navigator.IsRunning;
 
     public string ScanX { get => _scanX; set { Set(ref _scanX, value); OnPropertyChanged(nameof(CanScan)); } }
@@ -113,7 +119,9 @@ public sealed class CavebotViewModel : ObservableObject
     public void Dispose()
     {
         StopRecord();
+        _navigator.Changed -= OnNavigatorChanged;
         _navigator.Dispose();
+        _nativeService.Dispose();
     }
 
     private void InitializeCommands()
@@ -156,7 +164,7 @@ public sealed class CavebotViewModel : ObservableObject
     private void StartRouteAsync()
     {
         if (_navigator.IsRunning) return;
-        Feedback = HasWaypoints ? "Iniciando rota..." : "Iniciando modo livre...";
+        Feedback = "Validando sessão e fonte de posição...";
         _ = _navigator.StartAsync(Waypoints.ToList());
     }
 
@@ -468,12 +476,14 @@ public sealed class CavebotViewModel : ObservableObject
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var loaded = CavebotScriptService.Parse(File.ReadAllText(dialog.FileName));
+            var loaded = CavebotScriptService.ParseDocument(File.ReadAllText(dialog.FileName));
             Waypoints.Clear();
-            foreach (var waypoint in loaded) Waypoints.Add(waypoint);
+            foreach (var waypoint in loaded.Waypoints) Waypoints.Add(waypoint);
             SelectedWaypoint = null;
             _currentFile = null;
-            RouteName = Path.GetFileNameWithoutExtension(dialog.FileName);
+            _routeId = loaded.RouteId;
+            _routeVersion = loaded.Version;
+            RouteName = loaded.Name == "Rota importada" ? Path.GetFileNameWithoutExtension(dialog.FileName) : loaded.Name;
             RefreshCount();
             Feedback = $"{WaypointCount} waypoints importados. Revise a rota antes de salvar no formato KBot.";
         }
@@ -496,9 +506,19 @@ public sealed class CavebotViewModel : ObservableObject
         if (dialog.ShowDialog() != true) return;
         try
         {
-            File.WriteAllText(dialog.FileName, CavebotScriptService.Serialize(Waypoints));
+            var savedName = Path.GetFileNameWithoutExtension(dialog.FileName);
+            var nextVersion = _currentFile is null ? _routeVersion : _routeVersion + 1;
+            var route = new CavebotRouteDocument
+            {
+                RouteId = _routeId,
+                Name = savedName,
+                Version = nextVersion,
+                Waypoints = Waypoints.ToList()
+            };
+            File.WriteAllText(dialog.FileName, CavebotScriptService.Serialize(route));
             _currentFile = dialog.FileName;
-            RouteName = Path.GetFileNameWithoutExtension(dialog.FileName);
+            _routeVersion = nextVersion;
+            RouteName = savedName;
             Feedback = $"Rota salva com {WaypointCount} waypoints.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -514,10 +534,27 @@ public sealed class CavebotViewModel : ObservableObject
             Feedback = "Informe coordenadas X, Y e Z válidas.";
             return;
         }
-        var waypoint = new CavebotWaypoint { Number = Waypoints.Count + 1, Name = NewName.Trim(), X = x, Y = y, Z = z, Action = NewAction };
+        if (!int.TryParse(NewDelayMs, out var delayMs) || delayMs < 0 || delayMs > 600000)
+        {
+            Feedback = "O atraso do waypoint deve estar entre 0 e 600000 ms.";
+            return;
+        }
+        var waypoint = new CavebotWaypoint
+        {
+            Number = Waypoints.Count + 1,
+            Name = NewName.Trim(),
+            X = x,
+            Y = y,
+            Z = z,
+            Action = NewAction,
+            Argument = NewArgument.Trim(),
+            DelayMs = delayMs
+        };
         Waypoints.Add(waypoint);
         SelectedWaypoint = waypoint;
         NewName = string.Empty;
+        NewArgument = string.Empty;
+        NewDelayMs = "0";
         RefreshCount();
         Feedback = $"Waypoint {waypoint.Number} adicionado. Salve a rota para guardar as alterações.";
     }

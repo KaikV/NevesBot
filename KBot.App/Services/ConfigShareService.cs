@@ -25,6 +25,14 @@ public sealed class ConfigShareResult
         new("ob", p => p.AttackOneByOne, (p, v) => p.AttackOneByOne = (bool)v),
         new("as", p => p.AutoSummon, (p, v) => p.AutoSummon = (bool)v),
         new("sl", p => p.ActiveSlot, (p, v) => p.ActiveSlot = (int)v),
+        new("ar", p => p.AttackRange, (p, v) => p.AttackRange = (int)v),
+        new("rf", p => p.RareFirst, (p, v) => p.RareFirst = (bool)v),
+        new("tm", p => p.TargetMoveEnabled, (p, v) => p.TargetMoveEnabled = (bool)v),
+        new("ta", p => p.TargetApproachEnabled, (p, v) => p.TargetApproachEnabled = (bool)v),
+        new("tf", p => p.TargetFollowInBattle, (p, v) => p.TargetFollowInBattle = (bool)v),
+        new("ti", p => p.TargetMoveIntervalMs, (p, v) => p.TargetMoveIntervalMs = (int)v),
+        new("td", p => p.TargetKeepDistance, (p, v) => p.TargetKeepDistance = (int)v),
+        new("pr", p => p.PauseRouteOnTarget, (p, v) => p.PauseRouteOnTarget = (bool)v),
         new("rv", p => p.AutoReviveEnabled, (p, v) => p.AutoReviveEnabled = (bool)v),
         new("fh", p => p.FoodEnabled, (p, v) => p.FoodEnabled = (bool)v),
         new("rh", p => p.ReviveHp, (p, v) => p.ReviveHp = (int)v),
@@ -35,6 +43,9 @@ public sealed class ConfigShareResult
         new("am", p => p.AutoMedicine, (p, v) => p.AutoMedicine = (bool)v),
         new("hp", p => p.HealPlayer, (p, v) => p.HealPlayer = (bool)v),
         new("cp", p => p.CureAtPercent, (p, v) => p.CureAtPercent = (int)v),
+        new("ph", p => p.PlayerHealPercent, (p, v) => p.PlayerHealPercent = (int)v),
+        new("hc", p => p.HealingCooldownMs, (p, v) => p.HealingCooldownMs = (int)v),
+        new("hb", p => p.HealOnlyOutOfBattle, (p, v) => p.HealOnlyOutOfBattle = (bool)v),
         new("mk", p => p.MedicineHotkey, (p, v) => p.MedicineHotkey = (string?)v ?? ""),
         new("hk", p => p.HealHotkey, (p, v) => p.HealHotkey = (string?)v ?? ""),
         new("al", p => p.AlertsEnabled, (p, v) => p.AlertsEnabled = (bool)v),
@@ -52,6 +63,9 @@ public sealed class ConfigShareResult
         new("fwi", p => p.FishingWaterId, (p, v) => p.FishingWaterId = (int)v),
         new("ce2", p => p.CatchEnabled, (p, v) => p.CatchEnabled = (bool)v),
         new("ck", p => p.CatchHotkey, (p, v) => p.CatchHotkey = (string?)v ?? ""),
+        new("cd", p => p.CatchDelayMs, (p, v) => p.CatchDelayMs = (int)v),
+        new("cs", p => p.CatchShinyEnabled, (p, v) => p.CatchShinyEnabled = (bool)v),
+        new("sb", p => p.ShinyBallId, (p, v) => p.ShinyBallId = (int)v),
         new("le", p => p.LootEnabled, (p, v) => p.LootEnabled = (bool)v),
         new("lk", p => p.LootHotkey, (p, v) => p.LootHotkey = (string?)v ?? ""),
         new("ae", p => p.AntiAfkEnabled, (p, v) => p.AntiAfkEnabled = (bool)v),
@@ -99,6 +113,17 @@ public sealed class ConfigShareResult
         var monsters = profile.MonstersToAttack.Where(m => !string.IsNullOrWhiteSpace(m))
             .Select(m => EscapeValue(m.Trim())).ToList();
         if (monsters.Count > 0) parts.Add("ml=" + string.Join("~", monsters));
+        var ignored = profile.IgnoredMonsters.Where(m => !string.IsNullOrWhiteSpace(m))
+            .Select(m => EscapeValue(m.Trim())).ToList();
+        if (ignored.Count > 0) parts.Add("il=" + string.Join("~", ignored));
+        var rareWords = profile.RareWords.Where(m => !string.IsNullOrWhiteSpace(m))
+            .Select(m => EscapeValue(m.Trim())).ToList();
+        if (rareWords.Count > 0) parts.Add("wl=" + string.Join("~", rareWords));
+        var catchRules = profile.CatchEntries
+            .Where(entry => entry.CorpseId > 0 && entry.BallId >= 100 && !string.IsNullOrWhiteSpace(entry.Name))
+            .Select(entry => $"{EscapeValue(entry.Name.Trim())}|{entry.CorpseId}|{entry.BallId}")
+            .ToList();
+        if (catchRules.Count > 0) parts.Add("cl=" + string.Join("~", catchRules));
 
         var body = string.Join(";", parts);
         return $"{Version}:{body}:{Checksum(body)}";
@@ -127,6 +152,9 @@ public sealed class ConfigShareResult
         var pending = new List<Action>();
         var ignored = 0;
         List<string>? monsters = null;
+        List<string>? ignoredMonsters = null;
+        List<string>? rareWords = null;
+        List<KBot.App.BotBrain.CatchEntry>? catchEntries = null;
         var tokens = body.Split(';', StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var token in tokens)
@@ -135,9 +163,6 @@ public sealed class ConfigShareResult
             if (eq <= 0 || eq == token.Length - 1) { ignored++; continue; }
             var codePart = token[..eq];
             var payload = token[(eq + 1)..];
-            if (payload.Length < 2) { ignored++; continue; }
-            var tag = payload[0];
-            var data = payload[1..];
 
             if (codePart == "ml")
             {
@@ -145,6 +170,39 @@ public sealed class ConfigShareResult
                     .Select(UnescapeValue).Where(m => m.Length > 0).ToList();
                 continue;
             }
+            if (codePart == "il")
+            {
+                ignoredMonsters = payload.Split('~', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(UnescapeValue).Where(m => m.Length > 0).ToList();
+                continue;
+            }
+            if (codePart == "wl")
+            {
+                rareWords = payload.Split('~', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(UnescapeValue).Where(m => m.Length > 0).ToList();
+                continue;
+            }
+            if (codePart == "cl")
+            {
+                catchEntries = new();
+                foreach (var raw in payload.Split('~', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var ruleParts = raw.Split('|');
+                    if (ruleParts.Length != 3 || !int.TryParse(ruleParts[1], out var corpseId) || corpseId <= 0 ||
+                        !int.TryParse(ruleParts[2], out var ballId) || ballId < 100)
+                    {
+                        ignored++;
+                        continue;
+                    }
+                    var name = UnescapeValue(ruleParts[0]);
+                    if (name.Length > 0) catchEntries.Add(new KBot.App.BotBrain.CatchEntry(name, corpseId, ballId));
+                }
+                continue;
+            }
+
+            if (payload.Length < 2) { ignored++; continue; }
+            var tag = payload[0];
+            var data = payload[1..];
 
             var field = Fields.FirstOrDefault(f => f.Code == codePart);
             if (field is null) { ignored++; continue; }
@@ -167,14 +225,22 @@ public sealed class ConfigShareResult
         foreach (var apply in pending) apply();
         if (monsters is not null && monsters.Count > 0)
             into.MonstersToAttack = monsters;
+        if (ignoredMonsters is not null)
+            into.IgnoredMonsters = ignoredMonsters;
+        if (rareWords is not null)
+            into.RareWords = rareWords;
+        if (catchEntries is not null)
+            into.CatchEntries = catchEntries;
 
+        var listCount = (monsters is not null ? 1 : 0) + (ignoredMonsters is not null ? 1 : 0) +
+            (rareWords is not null ? 1 : 0) + (catchEntries is not null ? 1 : 0);
         return new ConfigShareResult
         {
-            Applied = pending.Count + (monsters is not null ? 1 : 0),
+            Applied = pending.Count + listCount,
             Ignored = ignored,
             Message = ignored > 0
-                ? $"{pending.Count + (monsters is not null ? 1 : 0)} ajustes aplicados, {ignored} ignorados."
-                : $"{pending.Count + (monsters is not null ? 1 : 0)} ajustes aplicados.",
+                ? $"{pending.Count + listCount} ajustes aplicados, {ignored} ignorados."
+                : $"{pending.Count + listCount} ajustes aplicados.",
         };
     }
 

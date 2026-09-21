@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\KBot.App\Models\CavebotWaypoint.cs" Link="CavebotWaypoint.cs" />
+    <Compile Include="..\KBot.App\Models\CavebotRouteDocument.cs" Link="CavebotRouteDocument.cs" />
     <Compile Include="..\KBot.App\Models\NativeStatus.cs" Link="NativeStatus.cs" />
     <Compile Include="..\KBot.App\Models\GameInstallation.cs" Link="GameInstallation.cs" />
     <Compile Include="..\KBot.App\Models\BotProfile.cs" Link="BotProfile.cs" />
@@ -16,6 +17,7 @@
     <Compile Include="..\KBot.App\Services\BotProfileService.cs" Link="BotProfileService.cs" />
     <Compile Include="..\KBot.App\Services\ConfigShareService.cs" Link="ConfigShareService.cs" />
     <Compile Include="..\KBot.App\Services\ConfigDiagnosticsService.cs" Link="ConfigDiagnosticsService.cs" />
+    <Compile Include="..\KBot.App\Services\AutomationEventHub.cs" Link="AutomationEventHub.cs" />
     <Compile Include="..\KBot.App\Services\PmResponderService.cs" Link="PmResponderService.cs" />
     <Compile Include="..\KBot.App\BotBrain\GameState.cs" Link="GameState.cs" />
     <Compile Include="..\KBot.App\BotBrain\ScreenScan.cs" Link="ScreenScan.cs" />

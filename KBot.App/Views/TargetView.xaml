@@ -42,6 +42,39 @@
                 </StackPanel>
             </controls:CardControl>
 
+            <controls:CardControl Title="MOVIMENTO E FILTROS" Margin="0,0,0,16">
+                <StackPanel>
+                    <WrapPanel Margin="0,0,0,12">
+                        <CheckBox Content="Mover para o alvo" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding TargetMoveEnabled}" Margin="0,0,20,8" />
+                        <CheckBox Content="Aproximar até a distância" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding TargetApproachEnabled}" Margin="0,0,20,8" />
+                        <CheckBox Content="Seguir durante a batalha" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding TargetFollowInBattle}" Margin="0,0,20,8" />
+                        <CheckBox Content="Priorizar raros/shiny" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding RareFirst}" Margin="0,0,20,8" />
+                        <CheckBox Content="Pausar rota ao encontrar alvo" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding PauseRouteOnTarget}" Margin="0,0,0,8" />
+                    </WrapPanel>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <TextBlock Text="ALCANCE (SQM)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding AttackRange, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="INTERVALO DE MOVIMENTO (MS)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding TargetMoveIntervalMs, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="MANTER DISTÂNCIA (SQM)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding TargetKeepDistance, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="PALAVRAS DE RARIDADE (VÍRGULA)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding RareWords, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+                    <TextBlock Text="CRIATURAS IGNORADAS (VÍRGULA)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding IgnoredMonsters, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+            </controls:CardControl>
+
             <controls:CardControl Title="PRIORIDADE DE ALVOS" Margin="0,0,0,16">
                 <StackPanel>
                     <TextBlock Text="A ordem define quais criaturas entram primeiro na seleção."

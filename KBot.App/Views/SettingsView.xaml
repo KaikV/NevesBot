@@ -328,6 +328,14 @@
                                                             <Setter Property="Background" Value="#5A3A14" />
                                                             <Setter Property="Foreground" Value="#FFC66B" />
                                                         </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="PARCIAL">
+                                                            <Setter Property="Background" Value="#5A3A14" />
+                                                            <Setter Property="Foreground" Value="#FFC66B" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="BLOQUEADO">
+                                                            <Setter Property="Background" Value="#5A2028" />
+                                                            <Setter Property="Foreground" Value="#FF8A96" />
+                                                        </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
                                             </TextBlock.Style>

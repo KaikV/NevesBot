@@ -31,6 +31,10 @@ public sealed class BotProfile
     public bool RareFirst { get; set; } = true;      // shiny/raro na lista tem prioridade total na mira
     public List<string> RareWords { get; set; } = new(); // substrings (ex.: shiny, elite) que viram prioridade
     public bool AlertsEnabled { get; set; }
+    // Per-supply alert thresholds (0_AB_catch style "supply" rules): map a bag item
+    // key (name or numeric id string, e.g. "2394" pokeball, "3156" revive) to the
+    // minimum count below which the falling-edge alert fires. Empty = no supply rule.
+    public Dictionary<string, int> SupplyAlerts { get; set; } = new();
     public bool HotkeysEnabled { get; set; }
     public string ManualReviveHotkey { get; set; } = string.Empty;
     public string PauseCavebotHotkey { get; set; } = string.Empty;

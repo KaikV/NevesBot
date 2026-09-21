@@ -46,6 +46,7 @@ public static class GameStateProvider
             ActiveAlive = null,
             FieldHasPoke = s.PokeOnField(),
             WildsNearby = status.HasPosition ? s.DangerNearby(status.PosX, status.PosY, status.PosZ) : 0,
+            OtherPlayerPresent = s.OtherPlayerPresent,
             Pulled = false,
             NowMs = nowMs
         };

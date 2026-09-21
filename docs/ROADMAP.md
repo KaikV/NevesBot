@@ -98,7 +98,7 @@ Status: ✅ portado & testado · 🟧 portado, esperando sensor · ⬜ não come
 | Feature | Fonte | Como funciona | KBot |
 | --- | --- | --- | --- |
 | Motor de regras | `main.lua` (sofaAL) | Não são features soltas: UM motor com **tipo de gatilho × ação**. Ações: som em loop (volume, mutar jogo), pausar cavebot/target/loot, deslogar e voltar em X min, cooldown, log. Novos tipos herdam tudo | ⬜ arquitetura ainda não no KBot |
-| Tipos de alerta | `n3_alarmes.lua` | SAIU / SUPRIMENTO / MORTE / QUEDA. "Queda" só avisa ao **voltar** (offline o sandbox é destruído; marca de tempo em `_G` sobrevive) | ⬜ |
+| Tipos de alerta | `n3_alarmes.lua` | SAIU / SUPRIMENTO / MORTE / NIVEL / CAPTUROU. Cada tipo é um DETECTOR DE BORDA (só dispara na transição; cooldown 4s). Prova de captura = MENSAGEM DO SERVIDOR no chat ("You caught a Pokemon! (Shiny X)"), não o corpo sumir | ✅ decisão em AlertDetect.cs + AlertsModule (morte/nivel/saiu/suprimento 3-leituras/capturado) teste headless; QUEDA-ao-voltar e Telegram ainda sem transport |
 | Telegram | `n3_alarmes.lua` | `POST https://licenca.kryonbots.com.br/pa/notify` com chatId/token; aceita comandos do celular (nasce ligado) | ⬜ |
 | Modelos prontos | `n3_alarmes.lua` | Botão aplica regras comuns pré-montadas | ⬜ |
 | **Responder PM** | `nF9_responderpm.lua` | 1x por pessoa; normaliza texto (acentos/repetidos); regras por prioridade (pergunta > saudação); janela de coleta (2ª msg mescla, não estende prazo); delay 3-6s sorteado; frases editáveis; GM **não** responde | ✅ `PmResponderService` (falta gancho onTalk + transporte talkPrivate) |

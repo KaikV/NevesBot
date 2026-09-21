@@ -313,6 +313,7 @@ RunScanChecks();
 RunWalkChecks();
 RunTargetChecks();
 RunCatchChecks();
+RunAlertChecks();
 
 static void RunSocorroChecks()
 {
@@ -739,6 +740,128 @@ static void RunPmChecks()
         "PM unknown message falls back to configured phrases");
 
     Check(PmResponderService.ParsePhrases("a, , b\n").Count == 2, "PM phrase csv parsing");
+}
+
+static void RunAlertChecks()
+{
+    // ---------- CatchMessage.Parse: server-only proof of a catch ----------
+    // A) The server line "You caught a Pokemon! (Shiny Hitmonchan)" -> catch, name + shiny.
+    {
+        var c = CatchMessage.Parse("text", "", "You caught a Pokemon! (Shiny Hitmonchan).");
+        Check(c.IsCatch && c.Name == "Shiny Hitmonchan" && c.Shiny,
+            $"Server catch line parses (got {c})");
+    }
+
+    // B) A NAMED player saying the same thing is ignored - only the server counts.
+    {
+        var c = CatchMessage.Parse("talk", "Fulano", "You caught a Pokemon! (Shiny Mewtwo).");
+        Check(!c.IsCatch, $"Player-shouted catch line ignored (got {c})");
+    }
+
+    // C) Non-catch server line is not a catch either.
+    {
+        Check(!CatchMessage.Parse("text", "", "A wild Gyarados appeared.").IsCatch, "Non-catch line: no match");
+    }
+
+    // D) Portuguese variant also matches.
+    {
+        var c = CatchMessage.Parse("text", "", "Você capturou um Pokémon! (Dratini).");
+        Check(c.IsCatch && c.Name == "Dratini" && !c.Shiny, $"PT catch line parses (got {c})");
+    }
+
+    // ---------- CatchFeed dedup: same line twice < 1.5s = ONE catch ----------
+    {
+        var feed = new CatchFeed();
+        var first  = feed.Offer("text", "", "You caught a Pokemon! (Dratini).", nowMs: 1000);
+        var second = feed.Offer("text", "", "You caught a Pokemon! (Dratini).", nowMs: 1200);
+        Check(first.IsCatch && !second.IsCatch, "Same line <1.5s = dedup to one catch");
+        // A DIFFERENT name after the window is a second real catch.
+        var third = feed.Offer("text", "", "You caught a Pokemon! (Porygon).", nowMs: 3000);
+        Check(third.IsCatch && third.Name == "Porygon", "Second different catch is counted");
+    }
+
+    // ---------- LevelUpTracker: rising edge only, first tick silent ----------
+    {
+        var t = new LevelUpTracker();
+        Check(!t.Tick(100), "First level tick does NOT fire (login at 100)");
+        Check(t.Tick(101), "100->101 fires");
+        Check(!t.Tick(101), "101->101 does not fire again");
+        Check(!t.Tick(null), "null level does not fire");
+        Check(t.Tick(102), "101->102 fires");
+    }
+
+    // ---------- DeathTracker: rising edge of alive=false ----------
+    {
+        var d = new DeathTracker();
+        Check(!d.Fire(true), "Alive -> no death alert");
+        Check(d.Fire(false), "True->False fires death");
+        Check(!d.Fire(false), "Still dead -> no repeat");
+        Check(!d.Fire(true), "Back to life resets (no fire)");
+        Check(d.Fire(false), "Second death fires again");
+        Check(!d.Fire(null), "null hp -> neither fires nor resets");
+    }
+
+    // ---------- PresenceTracker: falling edge with who-left detail ----------
+    {
+        var t = new PresenceTracker();
+        Check(t.Tick(true, "Fulano") == null, "Player appears: no alert yet");
+        Check(t.Tick(true, "Fulano") == null, "Still present: no alert");
+        Check(t.Tick(false, null) == "Fulano", $"Falling edge returns who-left");
+        Check(t.Tick(false, null) == null, "Still absent: no repeat");
+    }
+
+    // ---------- SupplyTracker: 3-consecutive-low + above-min re-arms ----------
+    {
+        var s = new SupplyTracker();
+        Check(s.Tick(50, 20) == null, "Above min: silent, resets counter");
+        Check(s.Tick(19, 20) == null, "Low #1: silent");
+        Check(s.Tick(18, 20) == null, "Low #2: silent");
+        Check(s.Tick(17, 20) != null, "Low #3 (with prev): fires");
+        Check(s.Tick(25, 20) == null, "Back above min: re-arms");
+        Check(s.Tick(19, 20) == null, "New low #1: silent");
+        Check(s.Tick(18, 20) == null, "New low #2: silent");
+        Check(s.Tick(17, 20) != null, "New low #3: fires again (re-armed)");
+        Check(s.Tick(null, 20) == null, "null count: silence (can't count)");
+    }
+
+    // ---------- AlertsModule integration (via ProfileView) ----------
+    {
+        var p = new ProfileView(new BotProfile
+        {
+            AlertsEnabled = true,
+            SupplyAlerts = { ["2394"] = 20 }
+        });
+        var mod = new AlertsModule();
+
+        // Death fires when ActiveAlive goes false.
+        var dead = new GameState
+        {
+            ClientConnected = true, InGame = true, NowMs = 0,
+            ActiveAlive = false
+        };
+        Check(mod.Decide(dead, p) is { Channel: ActionChannel.Command, Payload: "alert:morte:o personagem morreu" },
+            "Module emits morte alert on death");
+
+        // Same state again: no repeat (cooldown 4s).
+        Check(mod.Decide(dead, p) is null, "Morte does not repeat within cooldown");
+
+        // Level up: 300 -> 301
+        var lv300 = new GameState { ClientConnected = true, InGame = true, NowMs = 5000, CharacterLevel = 300, ActiveAlive = true };
+        mod.Decide(lv300, p);   // first tick: records only
+        var lv301 = lv300 with { NowMs = 10000, CharacterLevel = 301 };
+        Check(mod.Decide(lv301, p) is { Channel: ActionChannel.Command, Payload: "alert:nivel:subiu para o nivel 301" },
+            "Module emits nivel alert on level up");
+
+        // Caught: server chat line
+        var chat = new ChatLine("text", "", 0, "You caught a Pokemon! (Shiny Dratini).", AtMs: 14000);
+        var caught = new GameState
+        {
+            ClientConnected = true, InGame = true, NowMs = 14000,
+            ActiveAlive = true, LatestChat = chat
+        };
+        Check(mod.Decide(caught, p) is { Channel: ActionChannel.Command, Payload: "alert:capturou:Shiny Dratini" },
+            $"Module emits capturou alert from server line (got {mod.Decide(caught, p)})");
+    }
 }
 
 Console.WriteLine("All checks passed.");

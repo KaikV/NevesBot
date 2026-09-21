@@ -43,6 +43,8 @@ public interface IProfileView
     // Misc features
     bool FishingEnabled { get; }
     string? FishingHotkey { get; }
+    bool AlertsEnabled { get; }
+    IReadOnlyDictionary<string, int> SupplyAlerts { get; }
     bool CatchEnabled { get; }
     string? CatchHotkey { get; }
     IReadOnlyList<CatchEntry> CatchEntries { get; }

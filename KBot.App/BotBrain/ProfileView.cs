@@ -34,6 +34,8 @@ public sealed class ProfileView : IProfileView
     public IReadOnlyList<string> MonstersToAttack => _p.MonstersToAttack;
     public bool FishingEnabled => _p.FishingEnabled;
     public string? FishingHotkey => _p.FishingHotkey;
+    public bool AlertsEnabled => _p.AlertsEnabled;
+    public IReadOnlyDictionary<string, int> SupplyAlerts => _p.SupplyAlerts;
     public bool CatchEnabled => _p.CatchEnabled;
     public string? CatchHotkey => _p.CatchHotkey;
     public IReadOnlyList<CatchEntry> CatchEntries => _p.CatchEntries;

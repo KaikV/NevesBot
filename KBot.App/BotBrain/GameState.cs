@@ -29,6 +29,8 @@ public sealed record GameState
     public int? EnemyCount { get; init; }      // number of hostile creatures on screen
     public double? ActiveHpPercent { get; init; } // our active pokemon hp (0..100), null if unknown
     public bool? ActiveAlive { get; init; }     // null if unknown; false => fainted
+    // The CHARACTER (player) level, null until readable - drives the level-up alert edge.
+    public int? CharacterLevel { get; init; }
 
     // A creature that just dropped its corpse at our tile (ETAPA: captura). The id is
     // the corpse item id the vision reader reported; the names are display strings.
@@ -60,6 +62,22 @@ public sealed record GameState
     // vision transport exists; modules that need a real target degrade to null.
     public IReadOnlyList<ScannedCreature> Wilds { get; init; } = System.Array.Empty<ScannedCreature>();
 
+    // Bag item counts for the supply alerts (n3_alarmes "supply"). A NULL or MISSING
+    // key means "can't count this one" (bag closed / never seen) - which must read as
+    // silence, never "empty". Filled by the container-reading transport when it lands.
+    public IReadOnlyDictionary<string, int>? SupplyCounts { get; init; }
+
+    // Is another PLAYER standing on the screen right now (getSpectators isPlayer)?
+    // Null = unknown (scan pending). Drives the "jogador saiu da tela" falling edge.
+    public bool? OtherPlayerPresent { get; init; }
+    // Name of the other player last seen, for the alert detail ("saiu: Fulano").
+    public string? OtherPlayerName { get; init; }
+
+    // The newest local/server chat line the native layer surfaced this tick (n3_alarmes
+    // chatIn). null = nothing new. This is the honest source for the "caught" proof -
+    // the server line, not a disappearing corpse. The chat transport is not wired yet.
+    public ChatLine? LatestChat { get; init; }
+
     // "Pulled" = the player got dragged by a move/trap. Set by vision/alerts.
     public bool Pulled { get; init; }
 
@@ -71,3 +89,7 @@ public sealed record GameState
         ClientConnected = false, InGame = false, HasPosition = false, NowMs = nowMs
     };
 }
+
+// One raw chat event (sofaAL.chatIn args): src "talk" (player) or "text" (server),
+// the sender name ("" for server lines), the channel mode, and the text.
+public sealed record ChatLine(string Src, string Sender, int Mode, string Text, long AtMs);

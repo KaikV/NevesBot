@@ -49,18 +49,100 @@ public sealed class LootModule : IBotModule
     }
 }
 
-// Port of n3_alarmes.lua core signal (pulled/GM). Priority 60 -> surfaces an
-// alert command; Telegram delivery belongs to the app layer, not the brain.
+// Port of n3_alarmes.lua (the engine behind SAIU / SUPRIMENTO / MORTE / NIVEL /
+// CAPTUROU). Priority 60. The edge detectors (levelup, death, playerout, supply)
+// live in AlertDetect.cs as pure state machines; this module feeds them per-tick
+// from GameState and emits an "alert:<type>" command when any edge fires. The
+// Telegram delivery belongs to the app layer, not the brain.
 public sealed class AlertsModule : IBotModule
 {
     public string Name => "Alertas";
     public int Priority => 60;
 
+    private readonly LevelUpTracker _lvl = new();
+    private readonly DeathTracker _death = new();
+    private readonly PresenceTracker _presence = new();
+    private readonly Dictionary<string, SupplyTracker> _supply = new();
+    private readonly CatchFeed _catchFeed = new();
+    // Cooldown between alert commands so one tick doesn't chain-fire.
+    // -1 = never fired; the first tick can always alert (avoiding overflow with NowMs=0).
+    private long _lastAlertMs = -1;
+    private const long AlertCooldownMs = 4000;  // matches Lua 4s rule cooldown
+
+    public string Status { get; private set; } = "";
+
     public ActionIntent? Decide(GameState s, IProfileView p)
     {
-        if (s.Pulled) return ActionIntent.Command("alert", "pulled");
+        // Every alert obeys the same 4s cooldown (sofaAL rule cooldown) so one bad
+        // tick can't chain-fire. The edge detectors below only re-arm on transition,
+        // so the cooldown is backstop against overlapping edges, not the trigger.
+        if (!CanFire(s)) return null;
+
+        // Legacy signal: player got pulled (dragged by move/trap).
+        if (s.Pulled) return Fire(s, "alert:pulled");
+
+        if (!p.AlertsEnabled) return null;
+
+        // --- Death (MORTE) ---------------------------------------------------
+        // ActiveAlive=false is our proxy for "the character is down". A true
+        // character-death offset (player hp) will tighten this later; the edge
+        // logic + re-arm is identical regardless of the source.
+        if (_death.Fire(s.ActiveAlive))
+            return Fire(s, "alert:morte:o personagem morreu");
+
+        // --- Level up (SUBIU DE NIVEL) ---------------------------------------
+        if (_lvl.Tick(s.CharacterLevel))
+            return Fire(s, $"alert:nivel:subiu para o nivel {s.CharacterLevel}");
+
+        // --- Player out (SAIU DA TELA) ---------------------------------------
+        var whoLeft = _presence.Tick(
+            s.OtherPlayerPresent ?? false, s.OtherPlayerName);
+        if (whoLeft != null)
+            return Fire(s, $"alert:saiu:jogador saiu da tela: {whoLeft}");
+
+        // --- Supply (SUPRIMENTO ACABANDO) ------------------------------------
+        if (p.SupplyAlerts.Count > 0)
+        {
+            foreach (var (key, min) in p.SupplyAlerts)
+            {
+                int? count = null;
+                if (s.SupplyCounts != null && s.SupplyCounts.TryGetValue(key, out var c))
+                    count = c;
+                if (!_supply.TryGetValue(key, out var tr))
+                {
+                    tr = new SupplyTracker();
+                    _supply[key] = tr;
+                }
+                var msg = tr.Tick(count, min);
+                if (msg != null)
+                    return Fire(s, $"alert:suprimento:{msg}");
+            }
+        }
+
+        // --- Caught (CAPTURAR) -----------------------------------------------
+        // The HONEST proof is the server chat line, not a disappearing corpse.
+        if (s.LatestChat is { } chat)
+        {
+            var cp = _catchFeed.Offer(chat.Src, chat.Sender, chat.Text, chat.AtMs);
+            if (cp.IsCatch)
+            {
+                var nome = string.IsNullOrEmpty(cp.Name) ? "um pokemon" : cp.Name;
+                var pre = (cp.Shiny && !nome.ToLowerInvariant().Contains("shiny")) ? "SHINY " : "";
+                return Fire(s, $"alert:capturou:{pre}{nome}");
+            }
+        }
+
         return null;
     }
+
+    private ActionIntent Fire(GameState s, string payload)
+    {
+        _lastAlertMs = s.NowMs;
+        Status = payload;
+        return ActionIntent.Command(payload);
+    }
+
+    private bool CanFire(GameState s) => _lastAlertMs < 0 || s.NowMs - _lastAlertMs >= AlertCooldownMs;
 }
 
 // Port of the fishing panel. Priority 55 (after alerts, before route): when

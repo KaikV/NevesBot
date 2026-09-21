@@ -17,7 +17,7 @@ public sealed record ScannedCreature(int Type, double HealthPercent, int X, int 
 // Result of one screen pass. Solves BOTH questions the bot asks every tick
 // ("which wilds are on screen" and "where is MY poke") in one loop - exactly the
 // _cbScreen() optimization (before, they each walked the creature list).
-public sealed record ScanResult(bool Read, IReadOnlyList<ScannedCreature> Wilds, ScannedCreature? MyPoke)
+public sealed record ScanResult(bool Read, IReadOnlyList<ScannedCreature> Wilds, ScannedCreature? MyPoke, IReadOnlyList<ScannedCreature> Others = default!)
 {
     // Read=false: the scan itself did not happen (no transport yet / offline).
     // Callers must treat that as UNKNOWN, not as "empty screen".
@@ -26,6 +26,9 @@ public sealed record ScanResult(bool Read, IReadOnlyList<ScannedCreature> Wilds,
     // beat before the server removes it does NOT count - counting it held socorro
     // exactly when it was needed (real log 26/08).
     public bool HasPokeOnField => MyPoke is not null && MyPoke.IsAlive;
+    // getSpectators() isPlayer (n3_alarmes playerout): another player is standing on
+    // the screen right now. This drives the "jogador na tela / saiu da tela" alerts.
+    public bool OtherPlayerPresent => Others is { Count: > 0 };
 }
 
 // Pure port of the screen-vision decision layer from main.lua. It takes an
@@ -41,11 +44,12 @@ public static class ScreenScan
 
     // The transport (memory/vision) has not produced a scan this tick. Distinct
     // from a scan that genuinely found nothing.
-    public static ScanResult Empty() => new(false, System.Array.Empty<ScannedCreature>(), null);
+    public static ScanResult Empty() => new(false, System.Array.Empty<ScannedCreature>(), null, System.Array.Empty<ScannedCreature>());
 
     public static ScanResult Analyze(IEnumerable<ScannedCreature> creatures)
     {
         var wilds = new List<ScannedCreature>();
+        var others = new List<ScannedCreature>();
         ScannedCreature? mine = null;
 
         foreach (var c in creatures)
@@ -56,13 +60,18 @@ public static class ScreenScan
                 // duplicates the client may draw for effects).
                 mine ??= c;
             }
+            else if (c.Type == ScannedCreature.SummonOther)
+            {
+                // Another player's pokemon on screen -> "jogador na tela".
+                others.Add(c);
+            }
             else if (c.IsMonster && c.IsAlive)
             {
                 wilds.Add(c);
             }
         }
 
-        return new ScanResult(true, wilds, mine);
+        return new ScanResult(true, wilds, mine, others);
     }
 
     // sofaPokeOut() distilled: do we have a LIVE poke on the field? A corpse

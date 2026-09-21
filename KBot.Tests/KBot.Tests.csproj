@@ -22,6 +22,7 @@
     <Compile Include="..\KBot.App\BotBrain\CavebotRecorder.cs" Link="CavebotRecorder.cs" />
     <Compile Include="..\KBot.App\BotBrain\TargetSelection.cs" Link="TargetSelection.cs" />
     <Compile Include="..\KBot.App\BotBrain\CatchSelection.cs" Link="CatchSelection.cs" />
+    <Compile Include="..\KBot.App\BotBrain\AlertDetect.cs" Link="AlertDetect.cs" />
     <Compile Include="..\KBot.App\BotBrain\ActionIntent.cs" Link="ActionIntent.cs" />
     <Compile Include="..\KBot.App\BotBrain\IBotModule.cs" Link="IBotModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\ProfileView.cs" Link="ProfileView.cs" />

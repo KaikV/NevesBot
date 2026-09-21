@@ -1,0 +1,38 @@
+<UserControl x:Class="KBot.App.Views.LootView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:KBot.App.Controls">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,24">
+            <Border Background="{DynamicResource ElevatedBackground}" BorderBrush="{DynamicResource CardBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Text="COLETA" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="Prepare as opções de coleta."
+                                   Foreground="{DynamicResource PrimaryText}" FontSize="16" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,7,0,5" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Salvar perfil" Command="{Binding SaveCommand}" VerticalAlignment="Center"
+                            Style="{StaticResource PrimaryButtonStyle}" />
+                </Grid>
+            </Border>
+
+            <controls:CardControl Title="COLETA" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Guarde a preferência e o atalho de coleta no perfil. O reconhecimento dos objetos ainda precisa ser conectado ao cliente."
+                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Coletar automaticamente" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding LootEnabled}"
+                              Margin="0,0,0,12" />
+                    <TextBlock Text="ATALHO DE COLETA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding LootHotkey, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+            </controls:CardControl>
+            <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,16,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

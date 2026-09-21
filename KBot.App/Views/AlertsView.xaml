@@ -1,0 +1,66 @@
+<UserControl x:Class="KBot.App.Views.AlertsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:KBot.App.Controls">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,24">
+            <Border Background="{DynamicResource ElevatedBackground}" BorderBrush="{DynamicResource CardBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Text="ALERTAS" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="Configure alertas e atalhos manuais."
+                                   Foreground="{DynamicResource PrimaryText}" FontSize="16" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,7,0,5" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Salvar perfil" Command="{Binding SaveCommand}" VerticalAlignment="Center"
+                            Style="{StaticResource PrimaryButtonStyle}" />
+                </Grid>
+            </Border>
+
+            <controls:CardControl Title="ALERTAS E HOTKEYS" Margin="0,0,0,16">
+                <StackPanel>
+                    <CheckBox Content="Alertas de mensagens" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding AlertsEnabled}"
+                              Margin="0,0,0,8" />
+                    <CheckBox Content="Atalhos manuais" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding HotkeysEnabled}"
+                              Margin="0,0,0,14" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <TextBlock Text="REVIVE MANUAL" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding ManualReviveHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="PAUSAR CAVEBOT" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding PauseCavebotHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="PAUSAR ATAQUE" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding PauseAttackerHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </controls:CardControl>
+            <controls:CardControl Title="RESPONDER PM" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Responde UMA vez por pessoa no privado, com uma frase curta, após 3 a 6 segundos (sorteados). A segunda mensagem fica sem resposta de propósito."
+                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Responder PMs automaticamente" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding PmReplyEnabled}"
+                              Margin="0,0,0,12" />
+                    <TextBlock Text="FRASES (separadas por vírgula)" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding PmPhrases, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="72"
+                             VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" />
+                    <TextBlock Text="Deixe vazio para usar as frases de fábrica (jaja, projeto hoje ...., depende do meu humor, ...)."
+                               Foreground="{DynamicResource MutedText}" FontSize="11" Margin="0,6,0,0" />
+                </StackPanel>
+            </controls:CardControl>
+            <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,16,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

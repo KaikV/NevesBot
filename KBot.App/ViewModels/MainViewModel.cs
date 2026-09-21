@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 using System.Windows.Input;
 using KBot.App.Views;
 using KBot.App.Services;
@@ -10,7 +11,7 @@ namespace KBot.App.ViewModels
     {
         private object _currentView;
         private string _currentSection = "Dashboard";
-        private readonly Dictionary<string, SettingsView> _moduleViews;
+        private readonly Dictionary<string, UserControl> _moduleViews;
         private readonly CavebotViewModel _cavebotViewModel;
 
         public MainViewModel(KBotLifecycle lifecycle)
@@ -21,14 +22,14 @@ namespace KBot.App.ViewModels
             if (!ReferenceEquals(CavebotView.DataContext, _cavebotViewModel)) CavebotView.DataContext = _cavebotViewModel;
             var profile = new SettingsViewModel();
             SettingsView = new SettingsView(profile, "Settings");
-            _moduleViews = new Dictionary<string, SettingsView>
+            _moduleViews = new Dictionary<string, UserControl>
             {
-                ["Target"] = new SettingsView(profile, "Target"),
-                ["Healing"] = new SettingsView(profile, "Healing"),
-                ["Catch"] = new SettingsView(profile, "Catch"),
-                ["Loot"] = new SettingsView(profile, "Loot"),
-                ["Fishing"] = new SettingsView(profile, "Fishing"),
-                ["Alerts"] = new SettingsView(profile, "Alerts"),
+                ["Target"] = new TargetView(profile),
+                ["Healing"] = new HealingView(profile),
+                ["Catch"] = new CatchView(profile),
+                ["Loot"] = new LootView(profile),
+                ["Fishing"] = new FishingView(profile),
+                ["Alerts"] = new AlertsView(profile),
                 ["Settings"] = SettingsView
             };
             _currentView = DashboardView;

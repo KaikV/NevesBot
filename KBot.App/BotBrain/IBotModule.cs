@@ -1,3 +1,5 @@
+using KBot.App.Models;
+
 namespace KBot.App.BotBrain;
 
 // A feature module (port of one Kryon "nX_"/"panels_*" concern). The Brain ticks
@@ -13,6 +15,9 @@ public interface IBotModule
 // Read-only view over BotProfile so modules never mutate settings directly.
 public interface IProfileView
 {
+    // Lets the loop swap in a freshly loaded profile without rebuilding the brain.
+    void Refresh(BotProfile profile);
+
     // Healing & revive
     bool AutoRevive { get; }
     string? ReviveHotkey { get; }

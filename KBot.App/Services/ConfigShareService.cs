@@ -1,0 +1,189 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using KBot.App.Models;
+
+namespace KBot.App.Services;
+
+public sealed class ConfigShareResult
+{
+    public required string Message { get; init; }
+    public int Applied { get; init; }
+    public int Ignored { get; init; }
+}public static class ConfigShareService
+{
+    private const string Version = "KPB1";
+    private const char Escape = '%';
+
+    private sealed record Field(string Code, Func<BotProfile, object?> Read, Action<BotProfile, object> Write);
+
+    private static readonly List<Field> Fields = new()
+    {
+        new("at", p => p.AttackerEnabled, (p, v) => p.AttackerEnabled = (bool)v),
+        new("ac", p => p.AreaCombo, (p, v) => p.AreaCombo = (bool)v),
+        new("ob", p => p.AttackOneByOne, (p, v) => p.AttackOneByOne = (bool)v),
+        new("as", p => p.AutoSummon, (p, v) => p.AutoSummon = (bool)v),
+        new("sl", p => p.ActiveSlot, (p, v) => p.ActiveSlot = (int)v),
+        new("rv", p => p.AutoReviveEnabled, (p, v) => p.AutoReviveEnabled = (bool)v),
+        new("fh", p => p.FoodEnabled, (p, v) => p.FoodEnabled = (bool)v),
+        new("rh", p => p.ReviveHp, (p, v) => p.ReviveHp = (int)v),
+        new("oh", p => p.ReviveOutOfBattleHp, (p, v) => p.ReviveOutOfBattleHp = (int)v),
+        new("rk", p => p.ReviveItemHotkey, (p, v) => p.ReviveItemHotkey = (string?)v ?? ""),
+        new("fk", p => p.FoodHotkey, (p, v) => p.FoodHotkey = (string?)v ?? ""),
+        new("ap", p => p.AutoPotion, (p, v) => p.AutoPotion = (bool)v),
+        new("am", p => p.AutoMedicine, (p, v) => p.AutoMedicine = (bool)v),
+        new("hp", p => p.HealPlayer, (p, v) => p.HealPlayer = (bool)v),
+        new("cp", p => p.CureAtPercent, (p, v) => p.CureAtPercent = (int)v),
+        new("mk", p => p.MedicineHotkey, (p, v) => p.MedicineHotkey = (string?)v ?? ""),
+        new("hk", p => p.HealHotkey, (p, v) => p.HealHotkey = (string?)v ?? ""),
+        new("al", p => p.AlertsEnabled, (p, v) => p.AlertsEnabled = (bool)v),
+        new("hk2", p => p.HotkeysEnabled, (p, v) => p.HotkeysEnabled = (bool)v),
+        new("mr", p => p.ManualReviveHotkey, (p, v) => p.ManualReviveHotkey = (string?)v ?? ""),
+        new("pc", p => p.PauseCavebotHotkey, (p, v) => p.PauseCavebotHotkey = (string?)v ?? ""),
+        new("pa", p => p.PauseAttackerHotkey, (p, v) => p.PauseAttackerHotkey = (string?)v ?? ""),
+        new("fe", p => p.FishingEnabled, (p, v) => p.FishingEnabled = (bool)v),
+        new("fko", p => p.FishingHotkey, (p, v) => p.FishingHotkey = (string?)v ?? ""),
+        new("fx", p => p.FishingX, (p, v) => p.FishingX = (int)v),
+        new("fy", p => p.FishingY, (p, v) => p.FishingY = (int)v),
+        new("ce2", p => p.CatchEnabled, (p, v) => p.CatchEnabled = (bool)v),
+        new("ck", p => p.CatchHotkey, (p, v) => p.CatchHotkey = (string?)v ?? ""),
+        new("le", p => p.LootEnabled, (p, v) => p.LootEnabled = (bool)v),
+        new("lk", p => p.LootHotkey, (p, v) => p.LootHotkey = (string?)v ?? ""),
+    };
+
+    public static string Export(BotProfile profile)
+    {
+        var parts = new List<string>();
+        foreach (var field in Fields.OrderBy(f => f.Code, StringComparer.Ordinal))
+        {
+            var value = field.Read(profile);
+            if (value is bool b) parts.Add($"{field.Code}=b{(b ? "1" : "0")}");
+            else if (value is int n) parts.Add($"{field.Code}=n{n}");
+            else if (value is string s) parts.Add($"{field.Code}=s{EscapeValue(s)}");
+        }
+        var monsters = profile.MonstersToAttack.Where(m => !string.IsNullOrWhiteSpace(m))
+            .Select(m => EscapeValue(m.Trim())).ToList();
+        if (monsters.Count > 0) parts.Add("ml=" + string.Join("~", monsters));
+
+        var body = string.Join(";", parts);
+        return $"{Version}:{body}:{Checksum(body)}";
+    }
+
+    public static ConfigShareResult Import(string code, BotProfile into)
+    {
+        var clean = string.Concat(code?.Where(c => !char.IsWhiteSpace(c)) ?? Enumerable.Empty<char>());
+        if (clean.Length == 0) return new ConfigShareResult { Message = "Código vazio." };
+
+        var parts = clean.Split(':');
+        if (parts.Length != 3)
+        {
+            if (clean.StartsWith("KPB", StringComparison.OrdinalIgnoreCase))
+                return new ConfigShareResult { Message = "O código chegou CORTADO. Copie a linha inteira (do KPB até o fim)." };
+            return new ConfigShareResult { Message = $"Isso não parece um código do KBot (o certo começa com {Version}:)." };
+        }
+
+        if (!parts[0].Equals(Version, StringComparison.Ordinal))
+            return new ConfigShareResult { Message = $"Código da versão {parts[0]}; este KBot lê {Version}. Peça um código novo." };
+
+        var body = parts[1];
+        if (Checksum(body) != parts[2])
+            return new ConfigShareResult { Message = "Código incompleto ou alterado (a verificação não bate). Copie a linha inteira." };
+
+        var pending = new List<Action>();
+        var ignored = 0;
+        List<string>? monsters = null;
+        var tokens = body.Split(';', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var token in tokens)
+        {
+            var eq = token.IndexOf('=');
+            if (eq <= 0 || eq == token.Length - 1) { ignored++; continue; }
+            var codePart = token[..eq];
+            var payload = token[(eq + 1)..];
+            if (payload.Length < 2) { ignored++; continue; }
+            var tag = payload[0];
+            var data = payload[1..];
+
+            if (codePart == "ml")
+            {
+                monsters = payload.Split('~', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(UnescapeValue).Where(m => m.Length > 0).ToList();
+                continue;
+            }
+
+            var field = Fields.FirstOrDefault(f => f.Code == codePart);
+            if (field is null) { ignored++; continue; }
+
+            object? parsed = tag switch
+            {
+                'b' => data == "1",
+                'n' => int.TryParse(data, out var n) ? n : null,
+                's' => UnescapeValue(data),
+                _ => null
+            };
+            if (parsed is null && tag == 's') parsed = "";
+            if (parsed is null) { ignored++; continue; }
+
+            var write = field.Write;
+            var value = parsed;
+            pending.Add(() => write(into, value));
+        }
+
+        foreach (var apply in pending) apply();
+        if (monsters is not null && monsters.Count > 0)
+            into.MonstersToAttack = monsters;
+
+        return new ConfigShareResult
+        {
+            Applied = pending.Count + (monsters is not null ? 1 : 0),
+            Ignored = ignored,
+            Message = ignored > 0
+                ? $"{pending.Count + (monsters is not null ? 1 : 0)} ajustes aplicados, {ignored} ignorados."
+                : $"{pending.Count + (monsters is not null ? 1 : 0)} ajustes aplicados.",
+        };
+    }
+
+    private static string EscapeValue(string value)
+    {
+        if (value.IndexOfAny(new[] { '%', ';', ':', '|', '~', ' ', '=', '\n', '\r', '\t' }) < 0) return value;
+        var sb = new StringBuilder(value.Length);
+        foreach (var c in value)
+            sb.Append(char.IsWhiteSpace(c) || c is '%' or ';' or ':' or '|' or '~' or '=' ? $"%{((int)c):X2}" : c);
+        return sb.ToString();
+    }
+
+    private static string UnescapeValue(string value)
+    {
+        if (value.Contains('%'))
+        {
+            var sb = new StringBuilder(value.Length);
+            for (var i = 0; i < value.Length; i++)
+            {
+                if (value[i] == '%' && i + 2 < value.Length && IsHex(value[i + 1]) && IsHex(value[i + 2]))
+                {
+                    sb.Append((char)(HexVal(value[i + 1]) * 16 + HexVal(value[i + 2])));
+                    i += 2;
+                }
+                else sb.Append(value[i]);
+            }
+            return sb.ToString();
+        }
+        return value;
+    }
+
+    private static bool IsHex(char c) => c is >= '0' and <= '9' or >= 'A' and <= 'F';
+    private static int HexVal(char c) => c <= '9' ? c - '0' : c - 'A' + 10;
+
+    private static string Checksum(string body)
+    {
+        var bytes = Encoding.UTF8.GetBytes(body);
+        uint a = 1, bsum = 0;
+        foreach (var x in bytes)
+        {
+            a = (a + x) % 65521;
+            bsum = (bsum + a) % 65521;
+        }
+        return ((bsum << 16) | a).ToString("X");
+    }
+}

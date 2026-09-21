@@ -236,6 +236,110 @@ var prof = new ProfileView(new BotProfile
         "Memory: pid mismatch => not reliable");
 }
 
+{
+    // Share-code round trip: export -> import -> same profile.
+    var src = new BotProfile
+    {
+        AttackerEnabled = true,
+        AreaCombo = false,
+        ActiveSlot = 3,
+        CureAtPercent = 55,
+        ReviveHp = 25,
+        FishingHotkey = "Ctrl+Z",
+        MedicineHotkey = "F11;curar~x", // chars needing escape
+        MonstersToAttack = { "Mimikyu", "Pikachu" }
+    };
+    var code = ConfigShareService.Export(src);
+    Check(code.StartsWith("KPB1:"), "Share code starts with version");
+    Check(!code.Contains(' '), "Share code has no spaces (chat-safe)");
+
+    var dst = new BotProfile(); // defaults / untouched fields
+    dst.AttackerEnabled = false; // must be overridden by import
+    dst.AutoSummon = true;       // not in whitelist => stays untouched
+    var res = ConfigShareService.Import(code, dst);
+    Check(res.Applied > 0, "Share import applies fields");
+    Check(dst.AttackerEnabled == true, "Share import overrides bool");
+    Check(dst.AreaCombo == false, "Share import carries false (not just true)");
+    Check(dst.ActiveSlot == 3 && dst.CureAtPercent == 55 && dst.ReviveHp == 25, "Share import carries numbers");
+    Check(dst.FishingHotkey == "Ctrl+Z", "Share import carries string");
+    Check(dst.MedicineHotkey == "F11;curar~x", "Share import unescapes specials");
+    Check(dst.MonstersToAttack.SequenceEqual(new[] { "Mimikyu", "Pikachu" }), "Share import carries monster list");
+    Check(dst.AutoSummon == true, "Share import leaves unlisted field untouched");
+
+    // Truncated code -> rejected (checksum/format fail), not applied.
+    var cut = code[..(code.Length - 2)];
+    var cutRes = ConfigShareService.Import(cut, new BotProfile());
+    Check(cutRes.Applied == 0 && !string.IsNullOrEmpty(cutRes.Message), "Truncated share code rejected");
+
+    // Wrong version -> rejected with friendly message.
+    var wrongVer = "KPB9:" + code["KPB1:".Length..];
+    var verRes = ConfigShareService.Import(wrongVer, new BotProfile());
+    Check(verRes.Applied == 0 && verRes.Message.Contains("versão"), "Wrong-version share code rejected");
+
+    // Unknown code inside body -> ignored, others still apply.
+    var body = code.Split(':')[1];
+    var newBody = body + ";zz=b1";
+    var withUnknown = $"KPB1:{newBody}:{ConfigShareServiceChecksumHelper(newBody)}";
+    var unkRes = ConfigShareService.Import(withUnknown, new BotProfile());
+    Check(unkRes.Ignored >= 1, "Unknown share code ignored");
+}
+
+{
+    // Diagnostics surface a warning for missing position and for empty alvos.
+    var empty = new BotProfile();
+    var items = ConfigDiagnosticsService.Diagnose(empty, null);
+    Check(items.Any(i => i.Feature == "Leitura de memória" && i.Status == "ATENÇÃO"), "Diagnostics flags missing memory read");
+    Check(items.Any(i => i.Feature == "Alvos" && i.Status == "ATENÇÃO"), "Diagnostics flags empty alvo list");
+
+    var ready = new NativeStatus { ReaderStatus = "READY", HasPosition = true, PosX = 1, PosY = 2, PosZ = 3 };
+    var filled = new BotProfile { CatchHotkey = "C", LootHotkey = "L" };
+    filled.MonstersToAttack.Add("Eevee");
+    var ok = ConfigDiagnosticsService.Diagnose(filled, ready);
+    Check(ok.Any(i => i.Feature == "Leitura de memória" && i.Status == "PRONTO"), "Diagnostics reports reader ready");
+    Check(ok.Any(i => i.Feature == "Alvos" && i.Status == "PRONTO"), "Diagnostics reports alvos present");
+}
+
+static string ConfigShareServiceChecksumHelper(string body)
+{
+    var bytes = System.Text.Encoding.UTF8.GetBytes(body);
+    uint a = 1, bsum = 0;
+    foreach (var x in bytes) { a = (a + x) % 65521; bsum = (bsum + a) % 65521; }
+    return ((bsum << 16) | a).ToString("X");
+}
+
+RunPmChecks();
+
+static void RunPmChecks()
+{
+    Check(PmResponderService.Normalize("Taaii?? CÉ Taça") == "tai ce taca", "PM normalize accents/repeats");
+    var pm = new PmResponderService();
+    pm.OnPrivateMessage("Zeca", "Salve!", 0, myName: "Eu");
+    pm.OnPrivateMessage("Zeca", "ta ai?", 1, myName: "Eu"); // merges: question wins
+    pm.OnPrivateMessage("Ana", "blz", 0, myName: "Eu");
+    pm.OnPrivateMessage("Eu", "oi", 0, myName: "Eu"); // own echo ignored
+    // nothing due yet (delay >= 3000)
+    Check(pm.Tick(2999, "x").Count() == 0, "PM nothing due before delay");
+    var sends = pm.Tick(7000, "").ToList();
+    Check(sends.Count == 2, "PM one reply per player (self ignored)");
+    var zeca = sends.FirstOrDefault(s => s.To == "Zeca");
+    Check(zeca is not null && new[] { "to", "to sim", "to aqui", "to on" }.Contains(zeca.Message),
+        "PM Zeca answered with presenca rule reply (merged question wins)");
+    Check(sends.Any(s => s.To == "Ana"), "PM Ana answered once");
+    Check(sends.All(s => s.To != "Eu"), "PM self echo never answered");
+    // second message from same player -> silence on purpose
+    pm.OnPrivateMessage("Ana", "ta fazendo o que", 8000, myName: "Eu");
+    Check(!pm.Tick(13000, "").Any(s => s.To == "Ana"), "PM repeat message stays silent");
+
+    // fallback phrases used when nothing understood
+    var pm2 = new PmResponderService();
+    pm2.OnPrivateMessage("Lia", "qualquer coisa sem chaves", 0);
+    var viaFallback = pm2.Tick(7000, "bla, blop").ToList();
+    Check(viaFallback.Count == 1 && (viaFallback[0].Message == "bla" || viaFallback[0].Message == "blop"),
+        "PM unknown message falls back to configured phrases");
+
+    Check(PmResponderService.ParsePhrases("a, , b\n").Count == 2, "PM phrase csv parsing");
+}
+
 Console.WriteLine("All checks passed.");
 
 sealed class FakeSink : IActionSink

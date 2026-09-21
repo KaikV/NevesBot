@@ -16,4 +16,4 @@ obj/
 *.dll
 
 # Temporários
-*.tmp
+*.tmp*.zip

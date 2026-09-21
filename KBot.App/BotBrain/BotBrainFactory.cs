@@ -22,6 +22,7 @@ public static class BotBrainFactory
             new CatchModule(),
             new LootModule(),
             new AlertsModule(),
+            new FishingModule(),
             new RouteModule(),
             new AntiAfkModule());
         return brain;

@@ -3,6 +3,7 @@ using KBot.App.Models;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 
 namespace KBot.App.Services;
 
@@ -198,6 +199,11 @@ public sealed class KBotLifecycle : IDisposable
             _profile = BotProfileService.Load();
             Bot = BotBrainFactory.Build(_native, session.WindowHandle, _profile,
                 () => GameStateProvider.From(LastNativeStatus, CharacterSession?.State ?? CharacterPresence.Unknown, Environment.TickCount64));
+        }
+        else
+        {
+            try { Bot.RefreshProfile(BotProfileService.Load()); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
         }
         Bot.Tick();
     }

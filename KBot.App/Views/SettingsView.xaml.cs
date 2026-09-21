@@ -19,6 +19,9 @@ public partial class SettingsView : UserControl
         CatchCard.Visibility = all || section == "Catch" ? Visibility.Visible : Visibility.Collapsed;
         LootCard.Visibility = all || section == "Loot" ? Visibility.Visible : Visibility.Collapsed;
         ImportButton.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
+        ExportCodeButton.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
+        ImportCodeButton.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
+        DiagnoseCard.Visibility = all ? Visibility.Visible : Visibility.Collapsed;
         SectionEyebrow.Text = all ? "PERFIL DE AUTOMAÇÃO" : "CONFIGURAÇÃO DO MÓDULO";
         SectionHeading.Text = section switch
         {

@@ -44,6 +44,24 @@ public sealed class AlertsModule : IBotModule
     }
 }
 
+// Port of the fishing panel. Priority 55 (after alerts, before route): when
+// fishing is enabled, we are in game and not in battle, cast the fishing hook.
+public sealed class FishingModule : IBotModule
+{
+    public string Name => "Pesca";
+    public int Priority => 55;
+
+    private long _lastCastMs;
+
+    public ActionIntent? Decide(GameState s, IProfileView p)
+    {
+        if (!p.FishingEnabled || s.InBattle == true) return null;
+        if (s.NowMs - _lastCastMs < 4000) return null; // one hook every ~4s
+        _lastCastMs = s.NowMs;
+        return ActionIntent.Command("fish");
+    }
+}
+
 // Port of nL_antiafk.lua. Lowest priority: a tiny periodic nudge so the session
 // never AFK-outs. Emits a move only when idle and far from any other activity.
 public sealed class AntiAfkModule : IBotModule

@@ -39,6 +39,8 @@ public sealed class BotProfile
     public string CatchHotkey { get; set; } = string.Empty;
     public bool LootEnabled { get; set; }
     public string LootHotkey { get; set; } = string.Empty;
+    public bool PmReplyEnabled { get; set; }
+    public string PmPhrases { get; set; } = string.Empty; // CSV of vague replies (see PmResponderService.DefaultPhrases)
     public List<SpellSetting> Spells { get; set; } = new();
 }
 

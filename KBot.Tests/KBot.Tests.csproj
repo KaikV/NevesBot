@@ -14,6 +14,9 @@
     <Compile Include="..\KBot.App\Services\ClientStateDetector.cs" Link="ClientStateDetector.cs" />
     <Compile Include="..\KBot.App\Services\CavebotScriptService.cs" Link="CavebotScriptService.cs" />
     <Compile Include="..\KBot.App\Services\BotProfileService.cs" Link="BotProfileService.cs" />
+    <Compile Include="..\KBot.App\Services\ConfigShareService.cs" Link="ConfigShareService.cs" />
+    <Compile Include="..\KBot.App\Services\ConfigDiagnosticsService.cs" Link="ConfigDiagnosticsService.cs" />
+    <Compile Include="..\KBot.App\Services\PmResponderService.cs" Link="PmResponderService.cs" />
     <Compile Include="..\KBot.App\BotBrain\GameState.cs" Link="GameState.cs" />
     <Compile Include="..\KBot.App\BotBrain\ActionIntent.cs" Link="ActionIntent.cs" />
     <Compile Include="..\KBot.App\BotBrain\IBotModule.cs" Link="IBotModule.cs" />

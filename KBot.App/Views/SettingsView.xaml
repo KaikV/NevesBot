@@ -22,6 +22,10 @@
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <Button x:Name="ImportButton" Content="Importar perfil JSON" Command="{Binding ImportCommand}" Margin="0,0,8,0" />
+                        <Button x:Name="ExportCodeButton" Content="Exportar código" Command="{Binding ExportCodeCommand}" Margin="0,0,8,0"
+                                ToolTip="Gera uma linha de texto com sua configuração para passar a um amigo." />
+                        <Button x:Name="ImportCodeButton" Content="Importar código" Command="{Binding ImportCodeCommand}" Margin="0,0,8,0"
+                                ToolTip="Cole um código recebido de outro jogador para aplicar a configuração dele." />
                         <Button Content="Salvar perfil" Command="{Binding SaveCommand}"
                                 Style="{StaticResource PrimaryButtonStyle}" />
                     </StackPanel>
@@ -191,6 +195,44 @@
                               Margin="0,0,0,12" />
                     <TextBlock Text="ATALHO DE COLETA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
                     <TextBox Text="{Binding LootHotkey, UpdateSourceTrigger=PropertyChanged}" Width="220" HorizontalAlignment="Left" />
+                </StackPanel>
+            </controls:CardControl>
+            <controls:CardControl x:Name="DiagnoseCard" Title="DIAGNÓSTICO" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Conferência do que falta para cada recurso funcionar. Não muda comportamento, só mostra."
+                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <ItemsControl ItemsSource="{Binding Diagnostics}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Padding="6,2" CornerRadius="4" Margin="0,0,10,0" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding Status}" FontSize="10" FontWeight="Bold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Background" Value="#1E4F38" />
+                                                    <Setter Property="Foreground" Value="#7BE3A5" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="ATENÇÃO">
+                                                            <Setter Property="Background" Value="#5A3A14" />
+                                                            <Setter Property="Foreground" Value="#FFC66B" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="{Binding Feature}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource PrimaryText}" VerticalAlignment="Top" Margin="0,1,10,0" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Detail}" Foreground="{DynamicResource MutedText}"
+                                               TextWrapping="Wrap" FontSize="12" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Content="Verificar agora" Command="{Binding DiagnoseCommand}" HorizontalAlignment="Left" Margin="0,6,0,0" />
                 </StackPanel>
             </controls:CardControl>
             <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}"

@@ -129,6 +129,32 @@
                             </Grid>
                         </StackPanel>
                     </controls:CardControl>
+                    <controls:CardControl Title="GRAVAR ROTA (auto cavebot)" Margin="0,0,0,12">
+                        <StackPanel>
+                            <TextBlock Text="Ande normalmente no jogo. O bot lê sua posição e vai cravando um ponto a cada N tiles; mudança de andar vira ponto de escada."
+                                       Foreground="{DynamicResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10" />
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="70" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="A CADA (tiles)" Foreground="{DynamicResource MutedText}" FontSize="10" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBox Grid.Column="1" Text="{Binding RecordDistance, UpdateSourceTrigger=PropertyChanged}" ToolTip="1 a 9" />
+                                <Button Grid.Column="2" Command="{Binding RecordToggleCommand}" IsEnabled="{Binding CanRecord}" Margin="8,0,0,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButtonStyle}">
+                                            <Setter Property="Content" Value="GRAVAR" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Recording}" Value="True">
+                                                    <Setter Property="Content" Value="PARAR GRAVAÇÃO" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Grid>
+                            <Border Background="{DynamicResource WindowBackground}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="1" Padding="10">
+                                <TextBlock Text="{Binding RecordStatus}" Foreground="{DynamicResource PrimaryText}" FontSize="12" TextWrapping="Wrap" />
+                            </Border>
+                        </StackPanel>
+                    </controls:CardControl>
                     <controls:CardControl Title="ROTAS SALVAS" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock Text="Importe um JSON para carregar uma rota existente ou salve a rota atual com um nome próprio."

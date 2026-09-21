@@ -6,8 +6,12 @@ namespace KBot.App.BotBrain;
 // so modules never depend on the UI-facing model.
 public sealed class ProfileView : IProfileView
 {
-    private readonly BotProfile _p;
+    private BotProfile _p;
     public ProfileView(BotProfile p) => _p = p;
+
+    // The lifecycle reloads the on-disk profile every tick so edits made in the
+    // settings tabs apply without restarting the client.
+    public void Refresh(BotProfile p) => _p = p;
 
     public bool AutoRevive => _p.AutoReviveEnabled;
     public string? ReviveHotkey => _p.ReviveItemHotkey;

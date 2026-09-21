@@ -1,3 +1,5 @@
+using KBot.App.Models;
+
 namespace KBot.App.BotBrain;
 
 // The orchestrator: owns the module list and the tick loop. Each tick it builds
@@ -35,6 +37,8 @@ public sealed class BotBrain : IDisposable
         _stateProvider = stateProvider;
         _profile = profile;
     }
+
+    public void RefreshProfile(BotProfile profile) => _profile.Refresh(profile);
 
     public void Register(params IBotModule[] modules)
     {

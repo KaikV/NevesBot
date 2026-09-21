@@ -31,6 +31,16 @@ public sealed class CavebotViewModel : ObservableObject
     private string _scanZ = string.Empty;
     private bool _scanRunning;
 
+    // Route recording: reads the live position each tick and pins a waypoint
+    // whenever the player moved >= RecordDistance tiles from the last one (or
+    // the floor changed -> stairs marker). Mirrors Kryon's cavebot/recorder.lua.
+    private string _recordDistance = "5";
+    private bool _recording;
+    private (int X, int Y, int Z)? _lastRecorded;
+    private System.Threading.Timer? _recordTimer;
+    private bool _recordReading;
+    public string RecordStatus { get; private set; } = "Pronto para gravar.";
+
     public ObservableCollection<CavebotWaypoint> Waypoints { get; } = new();
     public Array Actions => Enum.GetValues<WaypointAction>();
     public CavebotWaypoint? SelectedWaypoint { get => _selectedWaypoint; set { Set(ref _selectedWaypoint, value); OnPropertyChanged(nameof(HasSelection)); } }
@@ -56,6 +66,10 @@ public sealed class CavebotViewModel : ObservableObject
     public bool CanScan => !ScanRunning &&
         int.TryParse(ScanX, out int x) && int.TryParse(ScanY, out int y) && int.TryParse(ScanZ, out int z);
 
+    public string RecordDistance { get => _recordDistance; set { Set(ref _recordDistance, value); OnPropertyChanged(nameof(CanRecord)); } }
+    public bool Recording { get => _recording; private set { Set(ref _recording, value); OnPropertyChanged(nameof(CanRecord)); OnPropertyChanged(nameof(RecordStatus)); } }
+    public bool CanRecord => !Recording && (string.IsNullOrWhiteSpace(RecordDistance) || int.TryParse(RecordDistance, out _));
+
     public ICommand ImportCommand { get; private set; } = null!;
     public ICommand SaveCommand { get; private set; } = null!;
     public ICommand AddCommand { get; private set; } = null!;
@@ -69,6 +83,7 @@ public sealed class CavebotViewModel : ObservableObject
     public ICommand StartRouteCommand { get; private set; } = null!;
     public ICommand StopRouteCommand { get; private set; } = null!;
     public ICommand ScanCommand { get; private set; } = null!;
+    public ICommand RecordToggleCommand { get; private set; } = null!;
 
     public CavebotViewModel()
     {
@@ -77,7 +92,11 @@ public sealed class CavebotViewModel : ObservableObject
         InitializeCommands();
     }
 
-    public void Dispose() => _navigator.Dispose();
+    public void Dispose()
+    {
+        StopRecord();
+        _navigator.Dispose();
+    }
 
     private void InitializeCommands()
     {
@@ -94,6 +113,7 @@ public sealed class CavebotViewModel : ObservableObject
         StartRouteCommand = new RelayCommand(_ => StartRouteAsync(), _ => CanStartRoute);
         StopRouteCommand = new RelayCommand(_ => StopRoute(), _ => _navigator.IsRunning);
         ScanCommand = new RelayCommand(async _ => await ScanAsync());
+        RecordToggleCommand = new RelayCommand(_ => ToggleRecord(), _ => CanRecord);
         RaiseRouteState();
     }
 
@@ -125,6 +145,109 @@ public sealed class CavebotViewModel : ObservableObject
         if (!_navigator.IsRunning) return;
         _navigator.Stop();
         Feedback = "Solicitando parada da rota...";
+    }
+
+    private void ToggleRecord()
+    {
+        if (!Recording) StartRecord(); else StopRecord();
+    }
+
+    private void StartRecord()
+    {
+        Recording = true;
+        _lastRecorded = null;
+        RecordStatus = "Gravando: ande e o bot crava um ponto a cada N tiles.";
+        _recordTimer = new System.Threading.Timer(_ => RecordTick(), null, 0, 300);
+        Raise();
+    }
+
+    private void StopRecord()
+    {
+        Recording = false;
+        _recordTimer?.Dispose();
+        _recordTimer = null;
+        _lastRecorded = null;
+        RecordStatus = $"Gravação parada. {WaypointCount} pontos na lista.";
+        Raise();
+    }
+
+    private void Raise() => OnPropertyChanged(nameof(RecordStatus));
+
+    private void RecordTick()
+    {
+        if (!Recording) return;
+        _ = RecordReadAsync();
+    }
+
+    private async Task RecordReadAsync()
+    {
+        if (!Recording || _recordReading) return;
+        _recordReading = true;
+        NativeStatus? status;
+        try
+        {
+            status = await _nativeService.GetStatusAsync(System.Threading.CancellationToken.None);
+        }
+        finally
+        {
+            _recordReading = false;
+        }
+        if (!Recording) return;
+
+        if (status is null || !status.HasPosition)
+        {
+            SetRecordStatus("Gravando: lendo posição do cliente...");
+            return;
+        }
+
+        var pos = (X: status.PosX, Y: status.PosY, Z: status.PosZ);
+        RunOnUi(() =>
+        {
+            if (_lastRecorded is not { } last)
+            {
+                AddRecordedWaypoint(pos);
+                RecordStatus = $"Ponto inicial gravado: {pos.X}, {pos.Y}, {pos.Z}.";
+                return;
+            }
+
+            var stairs = pos.Z != last.Item3;
+            var moved = Math.Max(Math.Abs(pos.X - last.Item1), Math.Abs(pos.Y - last.Item2));
+            int dist = int.TryParse(RecordDistance, out var d) ? d : 5;
+
+            if (stairs || moved >= Math.Max(1, dist))
+            {
+                AddRecordedWaypoint(pos);
+                RecordStatus = $"{(stairs ? "Escada" : "Ponto")} gravado: {pos.X}, {pos.Y}, {pos.Z}.";
+            }
+        });
+    }
+
+    private void AddRecordedWaypoint((int X, int Y, int Z) pos)
+    {
+        var wasStairs = _lastRecorded is { } last && pos.Z != last.Item3;
+        Waypoints.Add(new CavebotWaypoint
+        {
+            Number = Waypoints.Count + 1,
+            Name = wasStairs ? "escada" : string.Empty,
+            X = pos.X, Y = pos.Y, Z = pos.Z,
+            Action = WaypointAction.Walk
+        });
+        _lastRecorded = pos;
+        OnPropertyChanged(nameof(HasWaypoints));
+        OnPropertyChanged(nameof(WaypointCount));
+    }
+
+    private void SetRecordStatus(string value)
+    {
+        RunOnUi(() => RecordStatus = value);
+    }
+
+    private static void RunOnUi(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null) action();
+        else if (dispatcher.CheckAccess()) action();
+        else dispatcher.InvokeAsync(action);
     }
 
     private async Task StepAsync(string key)

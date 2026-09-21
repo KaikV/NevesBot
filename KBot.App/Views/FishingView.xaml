@@ -1,0 +1,51 @@
+<UserControl x:Class="KBot.App.Views.FishingView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:KBot.App.Controls">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,24">
+            <Border Background="{DynamicResource ElevatedBackground}" BorderBrush="{DynamicResource CardBorder}"
+                    BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,18">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Text="PESCA" Foreground="{DynamicResource AccentBrush}" FontSize="11" FontWeight="Bold" />
+                        <TextBlock Text="Defina o ponto e o atalho usados na pesca."
+                                   Foreground="{DynamicResource PrimaryText}" FontSize="16" FontWeight="SemiBold"
+                                   TextWrapping="Wrap" Margin="0,7,0,5" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Salvar perfil" Command="{Binding SaveCommand}" VerticalAlignment="Center"
+                            Style="{StaticResource PrimaryButtonStyle}" />
+                </Grid>
+            </Border>
+
+            <controls:CardControl Title="PESCA" Margin="0,0,0,16">
+                <StackPanel>
+                    <TextBlock Text="Defina o ponto de pesca na tela e o atalho correspondente. As coordenadas são pixels da tela."
+                               Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" Margin="0,0,0,12" />
+                    <CheckBox Content="Pescar sozinho" Style="{StaticResource ToggleOptionStyle}" IsChecked="{Binding FishingEnabled}"
+                              Margin="0,0,0,14" />
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                            <TextBlock Text="POSIÇÃO X" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingX, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                            <TextBlock Text="POSIÇÃO Y" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingY, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="ATALHO DE PESCA" Foreground="{DynamicResource MutedText}" FontSize="10" Margin="0,0,0,5" />
+                            <TextBox Text="{Binding FishingHotkey, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </controls:CardControl>
+            <TextBlock Text="{Binding Feedback}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" Margin="2,16,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

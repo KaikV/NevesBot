@@ -2,6 +2,7 @@ using KBot.App.BotBrain;
 using KBot.App.Models;
 using KBot.App.Services;
 using KBot.App.Engine.Sensors;
+using KBot.App.Engine.Scheduler;
 using KBot.App.Engine.Fusion;
 using System.Text.Json;
 
@@ -410,6 +411,7 @@ RunEndgameChecks();
 RunCalibrationChecks();
 RunSensorFoundationChecks();
 RunVisualCreatureChecks();
+RunSchedulerChecks();
 
 static void RunSocorroChecks()
 {
@@ -1881,6 +1883,80 @@ static void RunVisualCreatureChecks()
     }
 }
 
+static void RunSchedulerChecks()
+{
+    // A) Store: publish + read back round-trips per sensor.
+    {
+        var fast = new CountingSensor(0);
+        var slow = new CountingSensor(2);
+        var store = new SensorSampleStore(new[]
+        {
+            SensorRegistration.From(fast),
+            SensorRegistration.From(slow)
+        });
+        var sample = fast.ReadAsync().GetAwaiter().GetResult();
+        store.Publish(fast.Name, sample);
+        Check(store.TryGet<SensorValue<PositionValue>>(fast.Name, out var got) && got!.Value!.X == 1,
+            "Store: publish+read volta o valor");
+        Check(!store.TryGet<SensorValue<PositionValue>>("nope", out _), "Store: sensor inexistente -> TryGet false");
+    }
+
+    // B) Scheduler drives each sensor on its tier cadence (injected delay -> no real waiting).
+    {
+        var fast = new CountingSensor(0);
+        var normal = new CountingSensor(1);
+        var slow = new CountingSensor(2);
+        var store = new SensorSampleStore(new[]
+        {
+            SensorRegistration.From(fast),
+            SensorRegistration.From(normal),
+            SensorRegistration.From(slow)
+        });
+        // Real (tiny) delay: a CompletedTask would resume synchronously and let the tier loop
+        // spin hot without ever yielding, deadlocking Dispose. DefaultDelay yields properly.
+        var sched = new SensorScheduler(new[]
+            {
+                SensorRegistration.From(fast),
+                SensorRegistration.From(normal),
+                SensorRegistration.From(slow)
+            }, store, null, fastMs: 5, normalMs: 5, slowMs: 5);
+
+        sched.Start();
+        Thread.Sleep(80);
+        sched.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        Check(fast.Reads >= 1 && normal.Reads >= 1 && slow.Reads >= 1,
+            $"Scheduler: todos os tiers leram (fast={fast.Reads} normal={normal.Reads} slow={slow.Reads})");
+        Check(store.TryGet<SensorValue<PositionValue>>(fast.Name, out var v) && v!.IsValid && v.Value != null,
+            "Scheduler: amostra chegou ao store após leitura");
+        Check(sched.IsFresh(fast.Name, long.MaxValue), "Scheduler: IsFresh reflete última leitura recente");
+    }
+
+    // C) A sensor that throws must NOT kill its tier loop or another tier.
+    {
+        var ok = new CountingSensor(0);
+        ok.FailNext = true;   // first read throws
+        var other = new CountingSensor(1);
+        var store = new SensorSampleStore(new[] { SensorRegistration.From(ok), SensorRegistration.From(other) });
+
+        string? errName = null; Exception? errEx = null;
+        var sched = new SensorScheduler(new[]
+            {
+                SensorRegistration.From(ok),
+                SensorRegistration.From(other)
+            }, store, null, fastMs: 3, normalMs: 3);
+        sched.Error += (n, ex) => { errName = n; errEx = ex; };
+
+        sched.Start();
+        Thread.Sleep(100);
+        sched.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        Check(errName == ok.Name && errEx is InvalidOperationException, "Scheduler: erro do sensor reportado no evento");
+        Check(ok.Reads >= 2, "Scheduler: tier continua lendo depois da falha (não quebrou)");
+        Check(other.Reads >= 1, "Scheduler: falha de um tier não afeta outro");
+    }
+}
+
 Console.WriteLine("All checks passed.");
 
 sealed class FakeSink : IActionSink
@@ -1906,4 +1982,19 @@ sealed class FixedFrameSource(CapturedFrame frame) : IFrameSource
 sealed class UnavailableFrameSource : IFrameSource
 {
     public CaptureResult Capture() => new(CaptureOutcome.Unavailable, null, "window closed");
+}
+
+sealed class CountingSensor(int tier) : ISensor<PositionValue>
+{
+    private int _reads;
+    public int Reads => Volatile.Read(ref _reads);
+    public volatile bool FailNext;
+    public string Name => $"Counting_{tier}";
+    public SensorTier Tier => (SensorTier)tier;
+    public Task<SensorValue<PositionValue>> ReadAsync(CancellationToken ct = default)
+    {
+        Interlocked.Increment(ref _reads);
+        if (FailNext) { FailNext = false; throw new InvalidOperationException("boom"); }
+        return Task.FromResult(SensorValue<PositionValue>.Of(new PositionValue(1, 2, 3), Name));
+    }
 }

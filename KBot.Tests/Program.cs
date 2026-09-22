@@ -5,6 +5,7 @@ using KBot.App.Engine.Sensors;
 using KBot.App.Engine.Scheduler;
 using KBot.App.Engine.Fusion;
 using KBot.App.Engine.State;
+using KBot.App.Engine.Events;
 using System.Text.Json;
 
 static void Check(bool condition, string message)
@@ -414,6 +415,7 @@ RunSensorFoundationChecks();
 RunVisualCreatureChecks();
 RunSchedulerChecks();
 RunFusionChecks();
+RunDeltaChecks();
 
 static void RunSocorroChecks()
 {
@@ -2058,6 +2060,133 @@ static void RunFusionChecks()
         var s2 = new SensorFusion(nowMs: Now).Fuse(empty);
         Check(s1.SnapshotId != s2.SnapshotId, "Fusion: SnapshotId único por tick");
         Check(s1.CapturedAt == Now, "Fusion: CapturedAt usa o relógio injetado");
+    }
+}
+
+// Builds a deterministic GameStateSnapshot for edge tests; every field defaults to a calm state.
+static GameStateSnapshot Snap(
+    long at,
+    bool online = true,
+    bool inGame = true,
+    bool hasPos = true,
+    bool creaturesRead = true,
+    bool? fieldHasPoke = null,
+    bool? activeAlive = null,
+    int wilds = 0,
+    DataFreshness posFresh = DataFreshness.Fresh)
+{
+    var wildsList = new ScannedCreature[wilds];
+    for (var i = 0; i < wilds; i++) wildsList[i] = new ScannedCreature(1, 100, i + 1, 0, 0);
+    return new GameStateSnapshot(
+        Guid.NewGuid(), at,
+        ClientOnline: online, InGame: inGame,
+        PositionFreshness: posFresh,
+        PosX: hasPos ? 100 : (int?)null, PosY: hasPos ? 200 : (int?)null, PosZ: hasPos ? 3 : (int?)null,
+        CreaturesFreshness: creaturesRead ? DataFreshness.Fresh : DataFreshness.Unknown,
+        CreaturesRead: creaturesRead,
+        Wilds: wildsList, MyPoke: fieldHasPoke == true ? new ScannedCreature(3, 100, 0, 0, 0) : null,
+        Others: Array.Empty<ScannedCreature>(),
+        WildsNearby: 0, FieldHasPoke: fieldHasPoke,
+        PlayerHpPercent: null, ActiveHpPercent: null, ActiveAlive: activeAlive);
+}
+
+static void RunDeltaChecks()
+{
+    // A) First tick yields no transitions (nothing to compare against).
+    {
+        var de = new DeltaEngine();
+        var first = de.Detect(Snap(1_000));
+        Check(first.Count == 0, "Delta: primeiro tick = zero transicoes");
+    }
+
+    // B) Poke leaves the field -> exactly one PokeLeftField, fired once (not every tick).
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, fieldHasPoke: true));      // baseline: poke on field
+        Check(de.Detect(Snap(1_050, fieldHasPoke: true)).Count == 0, "Delta: poke continuo no campo = sem spam");
+        var left = de.Detect(Snap(1_100, fieldHasPoke: false));
+        Check(left.Contains(new GameDelta(GameDeltaType.PokeLeftField, 1_100)), "Delta: poke saiu do campo (edge unica)");
+        Check(de.Detect(Snap(1_150, fieldHasPoke: false)).Count == 0, "Delta: continuar fora = sem repeticao");
+    }
+
+    // C) Poke re-enters -> PokeEnteredField once.
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, fieldHasPoke: false));
+        var entered = de.Detect(Snap(1_050, fieldHasPoke: true));
+        Check(entered.Contains(new GameDelta(GameDeltaType.PokeEnteredField, 1_050)), "Delta: poke entrou no campo");
+    }
+
+    // D) Faint edge: ActiveAlive true->false fires PokeFainted; false->true fires PokeRecovered.
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, fieldHasPoke: true, activeAlive: true));
+        Check(de.Detect(Snap(1_050, fieldHasPoke: true, activeAlive: false))
+                .Contains(new GameDelta(GameDeltaType.PokeFainted, 1_050)), "Delta: desmaio (alive true->false)");
+        Check(de.Detect(Snap(1_100, fieldHasPoke: true, activeAlive: true))
+                .Contains(new GameDelta(GameDeltaType.PokeRecovered, 1_100)), "Delta: recuperou (false->true)");
+    }
+
+    // E) Client lost / restored edges.
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, online: true));
+        Check(de.Detect(Snap(1_050, online: false)).Contains(new GameDelta(GameDeltaType.ClientLost, 1_050)), "Delta: cliente perdido");
+        Check(de.Detect(Snap(1_100, online: true)).Contains(new GameDelta(GameDeltaType.ClientRestored, 1_100)), "Delta: cliente restaurado");
+    }
+
+    // F) Wild count crosses zero both ways, only between real reads.
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, wilds: 0));
+        Check(de.Detect(Snap(1_050, wilds: 2)).Contains(new GameDelta(GameDeltaType.WildsAppeared, 1_050)), "Delta: inimigos apareceram");
+        Check(de.Detect(Snap(1_100, wilds: 0)).Contains(new GameDelta(GameDeltaType.WildsCleared, 1_100)), "Delta: inimigos limpos");
+    }
+
+    // G) A missing creature scan must NOT fabricate a field change (silence, not an event).
+    {
+        var de = new DeltaEngine();
+        de.Detect(Snap(1_000, fieldHasPoke: true));                       // poke on field, readable
+        var blink = de.Detect(Snap(1_050, creaturesRead: false));          // vision blinked -> unreadable
+        Check(!blink.Any(x => x.Type == GameDeltaType.PokeLeftField), "Delta: scan sumiu != poke saiu (sem fabricar)");
+        // Recovery of the scan should not fire Enter either (it was never gone from our model).
+        var back = de.Detect(Snap(1_100, fieldHasPoke: true));
+        Check(!back.Any(x => x.Type == GameDeltaType.PokeEnteredField), "Delta: scan voltou != poke entrou");
+    }
+
+    // H) EventBus routes only subscribed types and isolates handler faults.
+    {
+        var bus = new EventBus();
+        int fainted = 0, wildsSeen = 0, all = 0;
+        bus.Subscribe(new[] { GameDeltaType.PokeFainted }, _ => fainted++);
+        bus.Subscribe(new[] { GameDeltaType.WildsAppeared }, _ => wildsSeen++);
+        bus.Subscribe(_ => all++);   // catch-all
+        bool threw = true;
+        try { bus.Publish(new GameDelta(GameDeltaType.WildsCleared, 1)); threw = false; } catch { }
+        Check(!threw, "EventBus: publish nao lancarca");
+        Check(fainted == 0 && wildsSeen == 0 && all == 1, "EventBus: catch-all recebe, filtrados ignoram out-of-set");
+
+        bus.Publish(new GameDelta(GameDeltaType.PokeFainted, 2));
+        Check(fainted == 1 && all == 2, "EventBus: tipo subscrito disparou");
+
+        // A throwing subscriber must not stop later subscribers nor the pipeline.
+        int afterThrow = 0;
+        bus.Subscribe(new[] { GameDeltaType.WildsAppeared }, _ => throw new Exception("boom"));
+        bus.Subscribe(new[] { GameDeltaType.WildsAppeared }, _ => afterThrow++);
+        var before = afterThrow;
+        try { bus.Publish(new GameDelta(GameDeltaType.WildsAppeared, 3)); threw = false; } catch { threw = true; }
+        Check(!threw && afterThrow == before + 1, "EventBus: subscriber que lancarca nao derruba os demais");
+
+        Check(bus.Recent().Count == 3 && bus.Recent().First().Type == GameDeltaType.WildsCleared &&
+              bus.Recent().Last().Type == GameDeltaType.WildsAppeared,
+            "EventBus: log recente mantem ordem (first->last)");
+    }
+
+    // I) EventBus log is bounded (ring) even under heavy publishing.
+    {
+        var bus = new EventBus();
+        for (var i = 0; i < 500; i++) bus.Publish(new GameDelta(GameDeltaType.WildsCleared, i));
+        Check(bus.Recent().Count <= 200, "EventBus: log bounded (<=200) sob volume alto");
     }
 }
 

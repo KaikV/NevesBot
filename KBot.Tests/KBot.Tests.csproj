@@ -55,6 +55,9 @@
     <Compile Include="..\KBot.App\Engine\Fusion\FreshnessPolicy.cs" Link="FreshnessPolicy.cs" />
     <Compile Include="..\KBot.App\Engine\Fusion\SensorFusion.cs" Link="SensorFusion.cs" />
     <Compile Include="..\KBot.App\Engine\State\GameStateSnapshot.cs" Link="GameStateSnapshot.cs" />
+    <Compile Include="..\KBot.App\Engine\Events\GameDelta.cs" Link="GameDelta.cs" />
+    <Compile Include="..\KBot.App\Engine\Events\DeltaEngine.cs" Link="DeltaEngine.cs" />
+    <Compile Include="..\KBot.App\Engine\Events\EventBus.cs" Link="EventBus.cs" />
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorSampleStore.cs" Link="SensorSampleStore.cs" />
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorScheduler.cs" Link="SensorScheduler.cs" />
   </ItemGroup>

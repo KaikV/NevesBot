@@ -23,6 +23,10 @@ public sealed class KBotLifecycle : IDisposable
     private bool? _launcherWasRunning;
     private bool _clientAttached;
     private int _badCoreTicks;
+    private DateTime _lastCalibrationAttempt = DateTime.MinValue;
+    private readonly OffsetAutoCalibrator _calibrator = new();
+
+    public string CalibrationStatus => _calibrator.Status;
 
     public KBotLifecycle(ICharacterSessionDetector? characterDetector = null, IScreenScanSource? screenScanSource = null)
     {
@@ -256,6 +260,7 @@ public sealed class KBotLifecycle : IDisposable
                     if (!stateChanged) Changed?.Invoke(this);
 
                     TickBrain(session);
+                    MaybeStartAutoCalibration(session, detection, cancellationToken);
                     await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
                 }
             }
@@ -287,6 +292,67 @@ public sealed class KBotLifecycle : IDisposable
             await _native.SetPositionOffsetAsync(savedOffset, cancellationToken);
             Trace.WriteLine($"[Handoff] Reaplicando offset de posição salvo {savedOffset:X} para {executableName}");
         }
+    }
+
+    // Self-healing: when the character is in-game but the reader is NOT ready
+    // (a client update moved the position field), kick the delta-scan calibrator
+    // on a background task so the main loop never blocks. A 5-minute cooldown and
+    // a running-flag keep it from spamming; the cooldown resets each new session
+    // (see _clientAttached block) so a relog gets a fresh attempt.
+    private void MaybeStartAutoCalibration(GameSession session, CharacterDetection detection, CancellationToken cancellationToken)
+    {
+        if (detection.State != CharacterPresence.InGame ||
+            detection.ReaderStatus == "READY" ||
+            _calibrator.IsRunning ||
+            (DateTime.Now - _lastCalibrationAttempt) < TimeSpan.FromMinutes(5))
+            return;
+        _ = Task.Run(async () =>
+        {
+            try { await StartCalibrationAsync(session, cancellationToken, force: false); }
+            catch (OperationCanceledException) { }
+        }, cancellationToken);
+    }
+
+    // Manual trigger ("Recalibrar agora" on the dashboard): same pipeline as the
+    // automatic one but ignores the cooldown; still refuses while already running
+    // or while there is no in-game character attached.
+    public async Task<bool> RequestCalibrationAsync(CancellationToken cancellationToken = default)
+    {
+        var session = GameSession;
+        var detection = LastDetection;
+        if (session is not { IsAlive: true } ||
+            detection is null || detection.State != CharacterPresence.InGame ||
+            _calibrator.IsRunning)
+            return false;
+        try
+        {
+            return await Task.Run(() => StartCalibrationAsync(session, cancellationToken, force: true), cancellationToken);
+        }
+        catch (OperationCanceledException) { return false; }
+    }
+
+    private async Task<bool> StartCalibrationAsync(GameSession session, CancellationToken cancellationToken, bool force)
+    {
+        if (!force && (DateTime.Now - _lastCalibrationAttempt) < TimeSpan.FromMinutes(5)) return false;
+        _lastCalibrationAttempt = DateTime.Now;
+        var executableName = Path.GetFileName(session.ExecutablePath);
+        Trace.WriteLine($"[OffsetAutoCalibrator] {(force ? "manual" : "gatilho automático")}: reader={LastDetection?.ReaderStatus}; iniciando recalibração");
+        AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Calibration", force ? "manual_started" : "auto_started",
+            "Leitura de posição fora do ar; recalibrando offset automaticamente.", session.Pid.ToString());
+        var result = false;
+        try
+        {
+            result = await _calibrator.RunAsync(_native, executableName, _offsetStore, cancellationToken);
+            AutomationEventHub.Shared.Publish(
+                result ? AutomationEventSeverity.Info : AutomationEventSeverity.Warning,
+                "Calibration", result ? "auto_ok" : "auto_failed", _calibrator.Status, session.Pid.ToString());
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or TimeoutException or UnauthorizedAccessException)
+        {
+            _calibrator.ReportStatus($"Falha na recalibração: {ex.Message}");
+        }
+        if (!_disposed) Changed?.Invoke(this);
+        return result;
     }
 
     private void TickBrain(GameSession session)

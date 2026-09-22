@@ -61,7 +61,31 @@
                                    FontSize="19" FontWeight="SemiBold" TextWrapping="Wrap"
                                    Margin="0,8,18,7" />
                         <TextBlock Text="O painel verifica o núcleo a cada segundo enquanto esta página está aberta."
-                                   Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="12" />
+                                    Foreground="{DynamicResource MutedText}" TextWrapping="Wrap" FontSize="12" />
+                        <Border Background="{DynamicResource WindowBackground}" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowCalibration}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="RECALIBRADOR DE OFFSET (AUTOMÁTICO)" Foreground="{DynamicResource AccentBrush}"
+                                               FontSize="10" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding CalibrationStatus}" Foreground="{DynamicResource MutedText}"
+                                               TextWrapping="Wrap" FontSize="12" Margin="0,3,0,0" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Recalibrar agora" VerticalAlignment="Center"
+                                        Command="{Binding CalibrateOffsetCommand}" />
+                            </Grid>
+                        </Border>
                     </StackPanel>
                     <Button Grid.Column="1" Content="Iniciar núcleo" Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding StartCoreCommand}" IsEnabled="{Binding CanStartCore}"

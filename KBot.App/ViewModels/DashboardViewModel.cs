@@ -21,6 +21,12 @@ public sealed class DashboardViewModel : ObservableObject
         StartCoreCommand = new RelayCommand(_ => { _lifecycle.StartCore(); Refresh(); }, _ => CanStartCore);
         OpenSessionCommand = new RelayCommand(_ => _ = _lifecycle.RestartAsync(), _ => !HasSession);
         CaptureSessionCommand = new RelayCommand(_ => CaptureSession(), _ => HasSession);
+        CalibrateOffsetCommand = new RelayCommand(async _ =>
+        {
+            var ok = await _lifecycle.RequestCalibrationAsync();
+            _ = ok;
+            Refresh();
+        }, _ => HasSession && ReaderStatus != "Pronto");
         _lifecycle.Changed += OnLifecycleChanged;
         Refresh();
     }
@@ -33,6 +39,7 @@ public sealed class DashboardViewModel : ObservableObject
     public ICommand StartCoreCommand { get; }
     public ICommand OpenSessionCommand { get; }
     public ICommand CaptureSessionCommand { get; }
+    public ICommand CalibrateOffsetCommand { get; }
     public string ClientName => _lifecycle.Installation?.Name ?? "Nenhum cliente configurado";
     public string ConfiguredClientPath => _lifecycle.Installation?.LauncherPath ?? string.Empty;
     public string SessionExecutable => Session is null ? "—" : Path.GetFileName(Session.ExecutablePath);
@@ -73,6 +80,11 @@ public sealed class DashboardViewModel : ObservableObject
         : NativeOnline ? "Núcleo online. Aguardando conexão com o cliente."
         : "Núcleo offline. Use “Iniciar núcleo” para tentar conectar.";
 
+    // Self-healing offset recalibrator: "" when idle; otherwise the live step
+    // (snapshot / step / filter / verify) shown on the Diagnóstico card.
+    public string CalibrationStatus => _lifecycle.CalibrationStatus;
+    public bool ShowCalibration => HasSession && !string.IsNullOrEmpty(CalibrationStatus);
+
     public bool HasPosition => ClientConnected && Status?.HasPosition == true;
     public string PositionText => HasPosition && Status is { } status
         ? $"{status.PosX}, {status.PosY}, {status.PosZ}" : "—";
@@ -103,11 +115,13 @@ public sealed class DashboardViewModel : ObservableObject
             nameof(LastUpdate), nameof(IsMonitoring), nameof(CoreStatusText),
             nameof(ClientStatusText), nameof(MonitorStatusText),             nameof(CanStartCore),
             nameof(ReaderStatus), nameof(ReaderDetail), nameof(StatusMessage), nameof(HasPosition), nameof(PositionText),
+            nameof(CalibrationStatus), nameof(ShowCalibration),
             nameof(BotActionLog), nameof(BotSignalSummary), nameof(BotPendingCommand), nameof(BrainActive)
         }) OnPropertyChanged(property);
         ((RelayCommand)OpenSessionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CaptureSessionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartCoreCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)CalibrateOffsetCommand).RaiseCanExecuteChanged();
     }
 
     private void CaptureSession()

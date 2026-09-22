@@ -257,18 +257,36 @@ namespace KBot.App.Services
             }
         }
 
-        private static async Task<string?> SendCommandAsync(string command, CancellationToken cancellationToken)
+        // Delta-scan (automatic offset calibration). Three phases the core keeps
+        // state across: SNAP caches the whole module, COMMIT diffs after one step
+        // and returns candidate offsets (JSON "candidates" array), STABLE re-checks
+        // the remembered candidates while the character stands still and keeps only
+        // frozen triples. SNAP and COMMIT read tens of megabytes, so they use long
+        // timeouts; the caller parses the raw JSON.
+        public Task<string?> ScanDeltaSnapAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("SCAN_DELTA_SNAP", cancellationToken, TimeSpan.FromSeconds(30));
+
+        public Task<string?> ScanDeltaCommitAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("SCAN_DELTA_COMMIT", cancellationToken, TimeSpan.FromSeconds(45));
+
+        public Task<string?> ScanDeltaStableAsync(CancellationToken cancellationToken = default) =>
+            SendCommandAsync("SCAN_DELTA_STABLE", cancellationToken, TimeSpan.FromSeconds(10));
+
+        private static async Task<string?> SendCommandAsync(string command, CancellationToken cancellationToken) =>
+            await SendCommandAsync(command, cancellationToken, TimeSpan.FromSeconds(2));
+
+        private static async Task<string?> SendCommandAsync(string command, CancellationToken cancellationToken, TimeSpan timeout)
         {
             try
             {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(2));
+                using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeoutSource.CancelAfter(timeout);
                 using var client = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
-                await client.ConnectAsync(timeout.Token);
+                await client.ConnectAsync(timeoutSource.Token);
                 using var writer = new StreamWriter(client, new UTF8Encoding(false), 1024, leaveOpen: true) { AutoFlush = true };
                 using var reader = new StreamReader(client, Encoding.UTF8, false, 1024, leaveOpen: true);
                 await writer.WriteLineAsync(command);
-                return await reader.ReadLineAsync(timeout.Token);
+                return await reader.ReadLineAsync(timeoutSource.Token);
             }
             catch (Exception ex) when (ex is OperationCanceledException or IOException or TimeoutException or UnauthorizedAccessException)
             {

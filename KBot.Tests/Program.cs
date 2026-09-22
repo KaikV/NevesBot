@@ -420,6 +420,7 @@ RunFusionChecks();
 RunDeltaChecks();
 RunRuntimeChecks();
 RunActionChecks();
+RunExecutorChecks();
 
 static void RunSocorroChecks()
 {
@@ -2415,9 +2416,108 @@ static void RunActionChecks()
         var back = revive.ToLegacy();
         Check(back.Channel == ActionChannel.Hotkey, "Bridge: ToLegacy preserva canal p/ executor legado");
     }
+
+    // H) Executor honesty: Move/Hotkey => Pressed; unresolved Command => Pending (NAO "handled");
+    //    transport refuse => Rejected. Never lies about success.
+    {
+        var keys = new FakeKeys();
+        var ex = new ActionExecutor(keys);
+        var snap2 = Snap(T);
+
+        var moveIt = It("route", IntentType.Move, IntentPriority.Movement, T, new[] { ActionLock.Movement }) with { Channel = ActionChannel.Move, Payload = "E" };
+        var move = ex.Execute(moveIt, snap2);
+        Check(move.Accepted && move.Outcome == FireOutcome.Pressed && keys.Moves.Contains("E"), "Exec: move => Pressed + chave foi enviada");
+
+        var hkIt = It("socorro", IntentType.Revive, IntentPriority.Safety, T) with { Channel = ActionChannel.Hotkey, Payload = "F9" };
+        var hk = ex.Execute(hkIt, snap2);
+        Check(hk.Accepted && hk.Outcome == FireOutcome.Pressed && keys.Hotkeys.Contains("F9"), "Exec: hotkey => Pressed");
+
+        // Command with no resolver match => honest Pending (legacy sink would have said "handled").
+        var cmdIt = It("combat", IntentType.Attack, IntentPriority.Combat, T) with { Channel = ActionChannel.Command, Payload = "attack" };
+        var cmd = ex.Execute(cmdIt, snap2);
+        Check(!cmd.Accepted && cmd.Outcome == FireOutcome.Pending && cmd.Detail.Length > 0, "Exec: command sem offset => Pending (nao mentira 'handled')");
+
+        // Transport refusing everything => Rejected.
+        var deadKeys = new DeadKeys();
+        var exDead = new ActionExecutor(deadKeys);
+        var dead = exDead.Execute(moveIt, snap2);
+        Check(!dead.Accepted && dead.Outcome == FireOutcome.Rejected, "Exec: pipe/janela recusou => Rejected");
+
+        // Empty payload is a data bug, not a press.
+        var noDir = ex.Execute(moveIt with { Payload = "" }, snap2);
+        Check(!noDir.Accepted && noDir.Outcome == FireOutcome.Rejected, "Exec: move sem direcao => Rejected");
+    }
+}
+
+static void RunExecutorChecks()
+{
+    // A) Full pipeline: arbitragem -> executor fisico (o caminho de verdade da engine).
+    {
+        const long T = 10_000;
+        var snap = Snap(T);
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        var keys = new FakeKeys();
+        var ex = new ActionExecutor(keys);
+
+        var res = am.Decide(snap, rt, new[]
+        {
+            It("route", IntentType.Move, IntentPriority.Movement, T),
+            It("combat", IntentType.Attack, IntentPriority.Combat, T),
+            It("socorro", IntentType.Revive, IntentPriority.Safety, T),
+        }, T);
+        Check(res.HasWinner && res.Winner!.SourceModule == "socorro", "Pipeline: Safety vence na arbitragem");
+
+        var fired = ex.Execute(res.Winner!, snap);
+        Check(fired.Accepted || fired.Outcome == FireOutcome.Pending, "Pipeline: vencedor executou (ou ficou honestamente pendente)");
+        Check(rt.PendingAction is { Kind: ActionKind.Revive }, "Pipeline: runtime sabe que esta revivendo");
+
+        // Confirm closes the loop: slot libera.
+        if (fired.Accepted) am.Confirm(rt, T + 1);
+        else am.Abort(rt, T + 1);   // pending: abort sem consumir retry (esperta do offset vir)
+        Check(rt.PendingAction is null, "Pipeline: confirm/abort encerrou o ciclo da acao");
+    }
+
+    // B) Retry ladder on real executor: transport down -> Fail x2 -> Abort -> slot livre de novo.
+    {
+        const long T = 10_000;
+        var snap = Snap(T);
+        var am = new ActionManager(maxRetries: 2);
+        var rt = new BotRuntimeState();
+        var ex = new ActionExecutor(new DeadKeys());
+
+        var res = am.Decide(snap, rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T) }, T);
+        Check(res.HasWinner, "Retry: primeira tentativa ganhou");
+
+        var fired = ex.Execute(res.Winner!, snap);
+        Check(!fired.Accepted && fired.Outcome == FireOutcome.Rejected, "Retry: transport recusou (honesto)");
+        Check(am.Fail(rt, T + 1), "Retry: 1o Fail => tenta de novo");
+        Check(!am.Fail(rt, T + 2), "Retry: retries esgotaram => abortar");
+        Check(rt.PendingAction is null, "Retry: slot livre apos esgotar");
+
+        var again = am.Decide(snap, rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T + 3) }, T + 3);
+        Check(again.HasWinner, "Retry: proximo tick pode decidir de novo apos abort");
+    }
+
+    // C) Executor nao toca no snapshot/state: mesmo snapshot reutilizado, resultado idempotente.
+    {
+        var keys = new FakeKeys();
+        var ex = new ActionExecutor(keys);
+        var snap = Snap(1);
+        var it = It("x", IntentType.Move, IntentPriority.Movement, 1) with { Channel = ActionChannel.Move, Payload = "S" };
+        var r1 = ex.Execute(it, snap);
+        var r2 = ex.Execute(it, snap);
+        Check(r1.Accepted && r2.Accepted && r1.Outcome == r2.Outcome, "Exec: idempotente (mesmo input => mesmo outcome)");
+    }
 }
 
 Console.WriteLine("All checks passed.");
+
+sealed class DeadKeys : IKeySender
+{
+    public bool TrySendMove(string direction) => false;
+    public bool TrySendHotkey(string combo) => false;
+}
 
 sealed class FakeSink : IActionSink
 {

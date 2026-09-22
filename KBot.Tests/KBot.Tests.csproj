@@ -63,5 +63,6 @@
     <Compile Include="..\KBot.App\Engine\Runtime\BotRuntimeState.cs" Link="BotRuntimeState.cs" />
     <Compile Include="..\KBot.App\Engine\Actions\IntentV2.cs" Link="IntentV2.cs" />
     <Compile Include="..\KBot.App\Engine\Actions\ActionManager.cs" Link="ActionManager.cs" />
+    <Compile Include="..\KBot.App\Engine\Actions\IActionExecutor.cs" Link="IActionExecutor.cs" />
   </ItemGroup>
 </Project>

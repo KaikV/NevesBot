@@ -98,6 +98,13 @@ namespace KBot.App
                 _loggedDeltas.Add(d.Type);
                 if (_loggedDeltas.Count > 8) _loggedDeltas.RemoveAt(0);
             });
+
+            System.Diagnostics.Trace.WriteLine(
+                $"[Engine] boot: frames={frame.GetType().Name}; " +
+                string.Join("; ", registrations.Select(r => $"{r.Name}[{r.Tier}]")));
+            System.Diagnostics.Trace.WriteLine(
+                $"[Engine] rates fast={config.FastMs}ms normal={config.NormalMs}ms slow={config.SlowMs}ms; " +
+                $"modules={_modules.Count} ({string.Join(", ", _modules.Select(m => m.Name))})");
         }
 
         public void Start()
@@ -244,9 +251,12 @@ namespace KBot.App
             return sb.ToString();
         }
 
-        private void OnSensorError(string name, Exception ex) =>
+        private void OnSensorError(string name, Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Sensor] {name}: {ex.Message}");
             AutomationEventHub.Shared.Publish(AutomationEventSeverity.Warning, "Sensors", "sensor_error",
                 $"{name}: {ex.Message}", name, TimeSpan.FromSeconds(2));
+        }
 
         private void SetSignals(GameStateSnapshot s)
         {

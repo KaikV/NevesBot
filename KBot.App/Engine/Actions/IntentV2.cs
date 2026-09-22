@@ -62,7 +62,18 @@ namespace KBot.App.Engine.Actions
         // Bridge back to the legacy shape so the OLD executor (BrainActionSink) can run it during the
         // dual-run migration window. Modules only learn to emit V2 gradually; until they do, the brain
         // wraps their legacy intents into this form.
-        public ActionIntent ToLegacy() => Type switch
+        public ActionIntent ToLegacy()
+        {
+            // Preserve the ORIGINAL channel when we know it: a Command("loot") must stay a Command so
+            // the executor's resolver maps it to the profile binding (F7). Converting it to a Hotkey
+            // with the raw name would press the literal key "loot".
+            if (Channel is { } c) return c switch
+            {
+                ActionChannel.Move    => ActionIntent.Move(Payload ?? ""),
+                ActionChannel.Hotkey  => ActionIntent.Hotkey(Payload ?? ""),
+                _                     => ActionIntent.Command(string.IsNullOrWhiteSpace(Payload) ? Type.ToString().ToLowerInvariant() : Payload),
+            };
+            return Type switch
         {
             IntentType.Move    => ActionIntent.Move(Payload ?? ""),
             IntentType.Catch   => ActionIntent.Hotkey(Payload ?? "catch"),
@@ -76,6 +87,7 @@ namespace KBot.App.Engine.Actions
             IntentType.AntiAfk => ActionIntent.Command("antiafk"),
             _                  => ActionIntent.Command($"intent:{Type}", Payload),
         };
+        }
     }
 
     // Convert a legacy intent (still emitted by un-migrated modules) into a V2 one. The caller stamps
@@ -183,6 +195,14 @@ namespace KBot.App.Engine.Actions
                 "recall" => IntentType.Recall,
                 "chat"   => IntentType.Chat,
                 "antiafk"=> IntentType.AntiAfk,
+                "loot"   => IntentType.Loot,
+                "catch"  => IntentType.Catch,
+                "fish"   => IntentType.Fish,
+                "use"    => IntentType.Revive,      // "usar item em alvo" -> heals/revives the field
+                "order"  => IntentType.Swap,        // "reordenar pokémon" is a party operation
+                "aim"    => IntentType.Attack,      // aim-then-attack; same combat lock family
+                "attack" => IntentType.Attack,
+                "talk" or "pokestop" => IntentType.Chat,
                 _        => IntentType.Attack,
             };
         }
@@ -191,9 +211,13 @@ namespace KBot.App.Engine.Actions
             var k = (p ?? "").ToLowerInvariant().Split(':')[0];
             return k switch
             {
-                "swap" => IntentPriority.Safety,
-                "summon" or "recall" => IntentPriority.Combat,
-                "chat" or "antiafk"  => IntentPriority.Utility,
+                "swap"  => IntentPriority.Safety,
+                "summon" or "recall" or "use" => IntentPriority.Combat,
+                "order" => IntentPriority.Combat,
+                "chat" or "antiafk" or "talk" or "pokestop" => IntentPriority.Utility,
+                "loot" or "catch" => IntentPriority.CatchLoot,
+                "fish" => IntentPriority.Movement,
+                "aim" or "attack" => IntentPriority.Combat,
                 _ => IntentPriority.Combat,
             };
         }
@@ -202,9 +226,13 @@ namespace KBot.App.Engine.Actions
             var k = (p ?? "").ToLowerInvariant().Split(':')[0];
             return k switch
             {
-                "swap" or "summon" or "recall" => new[] { ActionLock.Combat, ActionLock.Keyboard },
-                "chat" or "antiafk"            => new[] { ActionLock.Keyboard },
-                _                              => new[] { ActionLock.Keyboard },
+                "swap" or "summon" or "recall" or "use" or "order" => new[] { ActionLock.Combat, ActionLock.Keyboard },
+                "aim" or "attack"                                 => new[] { ActionLock.Combat, ActionLock.Keyboard },
+                "loot"                                             => new[] { ActionLock.Mouse },
+                "catch"                                            => new[] { ActionLock.Mouse, ActionLock.Keyboard },
+                "fish"                                             => new[] { ActionLock.Movement },
+                "chat" or "antiafk" or "talk" or "pokestop"        => new[] { ActionLock.Keyboard },
+                _                                                  => new[] { ActionLock.Keyboard },
             };
         }
     }

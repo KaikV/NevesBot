@@ -424,6 +424,8 @@ RunActionChecks();
 RunExecutorChecks();
 RunConfirmChecks();
 RunEngineIntegrationChecks();
+RunWorldDeltaChecks();
+RunLootUnverifiableChecks();
 
 static void RunSocorroChecks()
 {
@@ -2651,6 +2653,88 @@ static void RunEngineIntegrationChecks()
     Check(engine.Runtime.PendingAction is null, "Engine(J): posicao mudou => Confirm liberou o slot (loop fechado)");
 }
 
+// FASE K1 — world deltas surface in the operator feed: when the pipe drops, the fused snapshot goes
+// offline, DeltaEngine sees the edge, and BOTH the engine log and the shared AutomationEventHub
+// (Settings alert feed, with dedupe) receive it. Real DeltaEngine + EventBus + engine Tick path.
+static void RunWorldDeltaChecks()
+{
+    bool DropPipe = false;
+    var keys = new FakeKeys();
+    var cfg = new KBotEngineConfig
+    {
+        FastMs = 1_000_000, NormalMs = 1_000_000, SlowMs = 1_000_000,
+        // The pipe status is controllable from the test: online until "drop", then core down (null).
+        ReadNative = async () => DropPipe ? null : new NativeStatus
+        {
+            NativeOnline = true, ClientFound = true, HasPosition = true, PosX = 50, PosY = 60, PosZ = 1
+        },
+        Hwnd = () => (nint)1,
+        Presence = () => new PresenceProbe(InGame: true, Confidence: .9, CaptureAvailable: true, Source: "test"),
+        Profile = new BotProfile(),
+        Frames = () => new UnavailableFrameSource(),
+    };
+    using var engine = new KBotEngine(cfg, new IBotModule[0], keys);
+    engine.Start();
+
+    // Seed the world: online + position readable -> no deltas on the first (seeding) tick.
+    var now = Environment.TickCount64;
+    engine.Store.Publish(StructuredPositionSensor.NameConst,
+        SensorValue<PositionValue>.Of(new PositionValue(50, 60, 1, true), StructuredPositionSensor.NameConst));
+    engine.Store.Publish(VisionPresenceSensor.NameConst,
+        SensorValue<PresenceValue>.Of(new PresenceValue(true, .9, "test"), VisionPresenceSensor.NameConst));
+    engine.Tick();
+    Check(engine.Signals.Contains("cliente online"), "Engine(K1): seed ok (cliente online)");
+
+    // Pipe drops mid-session -> the NEXT tick must fire ClientLost + PositionLost into the alert hub.
+    DropPipe = true;
+    engine.Store.Publish(StructuredPositionSensor.NameConst,
+        SensorValue<PositionValue>.Unknown(StructuredPositionSensor.NameConst));
+    engine.Tick();
+    Check(engine.Signals.Contains("cliente offline"), "Engine(K1): signals refletiram a queda do pipe");
+    Check(engine.Log.Contains("mundo"), "Engine(K1): log do bot registrou o delta de mundo");
+
+    var feed = AutomationEventHub.Shared.Snapshot();
+    Check(feed.Any(e => e.Source == "Mundo" && e.EventCode == "client_lost" && e.Severity == AutomationEventSeverity.Error),
+        "Engine(K1): client_lost (Error) chegou no AutomationEventHub");
+    Check(feed.Any(e => e.Source == "Mundo" && e.EventCode == "position_lost" && e.Severity == AutomationEventSeverity.Warning),
+        "Engine(K1): position_lost (Warning) chegou no AutomationEventHub");
+}
+
+// FASE K2 — Loot end-to-end: the one action type the engine cannot verify (no inventory feed yet).
+// The honest path must be Abort(release) WITHOUT claiming success - not a retry loop, not a fake OK.
+static void RunLootUnverifiableChecks()
+{
+    var cfg = new KBotEngineConfig
+    {
+        FastMs = 1_000_000, NormalMs = 1_000_000, SlowMs = 1_000_000,
+        ReadNative = async () => new NativeStatus
+        {
+            NativeOnline = true, ClientFound = true, HasPosition = true, PosX = 50, PosY = 60, PosZ = 1
+        },
+        Hwnd = () => (nint)1,
+        Presence = () => new PresenceProbe(InGame: true, Confidence: .9, CaptureAvailable: true, Source: "test"),
+        Profile = new BotProfile { LootEnabled = true, LootHotkey = "F7" },
+        Frames = () => new UnavailableFrameSource(),
+    };
+    var keys = new FakeKeys();
+    using var engine = new KBotEngine(cfg, new IBotModule[] { new OneShotLootModule() }, keys);
+    engine.Start();
+
+    engine.Store.Publish(StructuredPositionSensor.NameConst,
+        SensorValue<PositionValue>.Of(new PositionValue(50, 60, 1, true), StructuredPositionSensor.NameConst));
+    engine.Store.Publish(VisionPresenceSensor.NameConst,
+        SensorValue<PresenceValue>.Of(new PresenceValue(true, .9, "test"), VisionPresenceSensor.NameConst));
+
+    engine.Tick();
+    Check(engine.Runtime.PendingAction is { Kind: ActionKind.Loot, Type: (int)IntentType.Loot }, "Engine(K2): loot instalado em voo");
+    Check(keys.Hotkeys.Count == 1 && keys.Hotkeys[0] == "F7", "Engine(K2): executor disparou o hotkey de loot");
+
+    // Next tick: no inventory feed can prove the pickup landed -> Unverifiable -> slot released honestly.
+    engine.Tick();
+    Check(engine.Runtime.PendingAction is null, "Engine(K2): Unverifiable liberou o slot sem fingir sucesso");
+    Check(engine.Log.Contains("sem verificacao") || engine.Log.Contains("liberado"), "Engine(K2): log registrou o liberado-sem-verificar");
+}
+
 Console.WriteLine("All checks passed.");
 
 sealed class DeadKeys : IKeySender
@@ -2712,5 +2796,20 @@ sealed class OneShotMoveModule : IBotModule
         if (_fired || !state.ClientConnected || !state.InGame || !state.HasPosition) return null;
         _fired = true;
         return ActionIntent.Move("down");
+    }
+}
+
+// FASE K2: mirrors the real LootModule emission (Command("loot"), resolved to the profile hotkey by
+// the executor's resolver) but only once, so the test can watch Unverifiable->Abort end-to-end.
+sealed class OneShotLootModule : IBotModule
+{
+    private bool _fired;
+    public string Name => "TesteLoot";
+    public int Priority => 70;
+    public ActionIntent? Decide(GameState state, IProfileView profile)
+    {
+        if (_fired || !state.ClientConnected || !state.InGame) return null;
+        _fired = true;
+        return ActionIntent.Command("loot");
     }
 }

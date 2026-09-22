@@ -129,14 +129,22 @@ namespace KBot.App
             SetSignals(snapshot);
 
             // 2) Edge detection on trustworthy transitions; publish to interested subscribers.
+            //    The most impactful edge of THIS tick is remembered so step 5 keeps it visible in the
+            //    single-line log instead of clobbering it with "nada a fazer".
+            AutomationEventSeverity? worldSev = null;
+            string? worldEvent = null;
             foreach (var d in _delta.Detect(snapshot))
             {
                 _bus.Publish(d);
-                SetLog($"[mundo] {d.Describe()}");
+                var sev = WorldDeltaSeverity(d.Type);
+                if (!worldSev.HasValue || sev > worldSev.Value) { worldSev = sev; worldEvent = d.Describe(); }
+                PublishWorldDelta(d);
             }
 
             // 3) Resolve whatever action is in flight against the FRESH world (honesty step).
-            ConfirmPending(snapshot, now);
+            //    Remember its outcome: it outranks an idle line but not a fired-action line.
+            string? confirmLine = null;
+            ResolveInFlight(snapshot, now, out confirmLine);
 
             // 4) Every module gets its say; the arbiter picks the single winner.
             var legacy = snapshot.ToLegacy();
@@ -155,9 +163,15 @@ namespace KBot.App
                     intents.Add(IntentBridge.FromLegacy(intent, module.Name, now));
             }
 
+            var stepLog = _log;
             var res = _manager.Decide(snapshot, Runtime, intents, now);
             if (!res.HasWinner || res.Winner is not { } winner)
             {
+                // Nothing fired: the most important thing that happened THIS tick wins the single line -
+                // a confirm/abort of the previous action beats a world edge, which beats "idle".
+                if (_log != stepLog) return;
+                if (confirmLine is { } c) { SetLog(c); return; }
+                if (worldEvent is { } w) { SetLog($"[mundo] {w}"); return; }
                 SetLog(intents.Count == 0 ? "nada a fazer" : $"aguardando: {res.Reason}");
                 return;
             }
@@ -176,8 +190,9 @@ namespace KBot.App
 
         // --- the loop's honesty step -----------------------------------------------------------
 
-        private void ConfirmPending(GameStateSnapshot snapshot, long now)
+        private void ResolveInFlight(GameStateSnapshot snapshot, long now, out string? line)
         {
+            line = null;
             var pending = Runtime.PendingAction;
             if (pending is null || pending.Kind == ActionKind.None) return;
 
@@ -186,18 +201,47 @@ namespace KBot.App
             {
                 case ConfirmState.Confirmed:
                     _manager.Confirm(Runtime, now);
-                    SetLog($"confirmado: {verdict.Detail}");
+                    line = $"confirmado: {verdict.Detail}";
                     break;
                 case ConfirmState.NotYet:
                     if (!_manager.Fail(Runtime, now))
-                        SetLog($"desistiu apos retries: {verdict.Detail}");
+                        line = $"desistiu apos retries: {verdict.Detail}";
                     break;
                 case ConfirmState.Unverifiable:
                     // No sensor can prove this effect today: release WITHOUT claiming success.
                     _manager.Abort(Runtime, now);
-                    SetLog($"liberado sem verificacao: {verdict.Detail}");
+                    line = $"liberado sem verificacao: {verdict.Detail}";
                     break;
             }
+        }
+
+        // World deltas (client lost, poke fainted, wilds appeared...) are operator-critical signals, so
+        // they go to the shared alert feed too - not just the one-line bot log. Severity follows impact;
+        // dedupe + capacity come from the hub itself, so a flickering edge cannot flood the UI.
+        private static void PublishWorldDelta(GameDelta d) =>
+            AutomationEventHub.Shared.Publish(WorldDeltaSeverity(d.Type), "Mundo", WorldDeltaCode(d), d.Describe());
+
+        private static AutomationEventSeverity WorldDeltaSeverity(GameDeltaType t) => t switch
+        {
+            GameDeltaType.ClientLost or GameDeltaType.PokeFainted => AutomationEventSeverity.Error,
+            GameDeltaType.LeftGame or GameDeltaType.PositionLost or GameDeltaType.WildsAppeared
+                => AutomationEventSeverity.Warning,
+            _ => AutomationEventSeverity.Info,
+        };
+
+        // "ClientLost" -> "client_lost": consistent with the rest of the hub's event codes.
+        private static string WorldDeltaCode(GameDelta d)
+        {
+            var name = d.Type.ToString();
+            var sb = new System.Text.StringBuilder(name.Length + 4);
+            foreach (var c in name)
+                if (char.IsUpper(c))
+                {
+                    if (sb.Length > 0) sb.Append('_');
+                    sb.Append(char.ToLowerInvariant(c));
+                }
+                else sb.Append(c);
+            return sb.ToString();
         }
 
         private void OnSensorError(string name, Exception ex) =>

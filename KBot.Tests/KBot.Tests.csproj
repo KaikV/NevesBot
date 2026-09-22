@@ -65,5 +65,6 @@
     <Compile Include="..\KBot.App\Engine\Actions\ActionManager.cs" Link="ActionManager.cs" />
     <Compile Include="..\KBot.App\Engine\Actions\IActionExecutor.cs" Link="IActionExecutor.cs" />
     <Compile Include="..\KBot.App\Engine\Actions\Confirmation.cs" Link="Confirmation.cs" />
+    <Compile Include="..\KBot.App\Engine\KBotEngine.cs" Link="KBotEngine.cs" />
   </ItemGroup>
 </Project>

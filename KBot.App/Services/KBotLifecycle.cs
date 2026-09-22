@@ -1,4 +1,6 @@
 using KBot.App.BotBrain;
+using KBot.App.Engine;
+using KBot.App.Engine.Sensors;
 using KBot.App.Models;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -45,9 +47,10 @@ public sealed class KBotLifecycle : IDisposable
     public string HandoffStatus { get; private set; } = "Aguardando launcher/cliente.";
     public bool CanShowMainWindow => State == KBotLifecycleState.Ready && CharacterSession?.IsInGame == true;
     public KBot.App.BotBrain.BotBrain? Bot { get; private set; } = null;
-    public string BotLog => Bot?.Log ?? "Brain aguardando personagem.";
-    public string BotSignals => Bot?.SignalSummary ?? "sem leitura ainda.";
-    public string BotPending => Bot?.PendingCommand ?? "—";
+    public KBot.App.KBotEngine? Engine { get; private set; } = null;
+    public string BotLog => Engine?.Log ?? Bot?.Log ?? "Brain aguardando personagem.";
+    public string BotSignals => Engine?.Signals ?? Bot?.SignalSummary ?? "sem leitura ainda.";
+    public string BotPending => Engine?.Runtime.StatusLine is { Length: > 0 } s ? s : "—";
     private BotProfile _profile = new();
     public event Action<KBotLifecycle>? Changed;
 
@@ -101,8 +104,8 @@ public sealed class KBotLifecycle : IDisposable
                 {
                     if (!_disposed) await _native.DetachGameAsync(CancellationToken.None);
                     session.Dispose();
-                    Bot?.Dispose();
-                    Bot = null;
+                    Engine?.Dispose();
+                    Engine = null;
                     _characterDetector.Reset();
                     _loggedReaderStatus = null;
                     _launcherWasRunning = null;
@@ -278,8 +281,8 @@ public sealed class KBotLifecycle : IDisposable
                 if (!_disposed) await _native.DetachGameAsync(CancellationToken.None);
                 session.Dispose();
                 GameSession = null;
-                Bot?.Dispose();
-                Bot = null;
+                Engine?.Dispose();
+                Engine = null;
             }
         }
     }
@@ -364,30 +367,39 @@ public sealed class KBotLifecycle : IDisposable
             return;
         if (State != KBotLifecycleState.Ready)
         {
-            Bot?.Dispose();
-            Bot = null;
+            Engine?.Dispose();
+            Engine = null;
             return;
         }
 
-        if (Bot is null)
+        if (Engine is null)
         {
             _profile = BotProfileService.Load();
-            Bot = BotBrainFactory.Build(_native, session.WindowHandle, _profile,
-                () =>
-                {
-                    var presence = CharacterSession?.State ?? CharacterPresence.Unknown;
-                    var scan = _screenScanSource.GetScan(LastNativeStatus, presence);
-                    return GameStateProvider.From(LastNativeStatus, presence, Environment.TickCount64, scan);
-                });
-            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Automation", "brain_started",
-                "Motor de automação iniciado para o personagem detectado.", session.Pid.ToString());
+            var keys = new WindowsKeySender(_native, session.WindowHandle);
+            var frames = new KBot.App.Engine.Sensors.GameWindowFrameSource(() => GameSession?.WindowHandle ?? nint.Zero);
+            Engine = new KBotEngine(new KBotEngineConfig
+            {
+                ReadNative = () => _native.GetStatusAsync(CancellationToken.None),
+                Hwnd = () => GameSession?.WindowHandle ?? nint.Zero,
+                Presence = () => new PresenceProbe(
+                    CharacterSession?.State == CharacterPresence.InGame,
+                    LastDetection?.Confidence ?? 0,
+                    LastDetection?.DetectionStatus != CharacterDetectionStatus.CaptureUnavailable,
+                    LastDetection?.Source.ToString() ?? "unknown"),
+                Profile = _profile,
+                Frames = () => frames,
+            }, BotBrainFactory.Modules(), keys);
+            Engine.Changed += () => { if (!_disposed) Changed?.Invoke(this); };
+            Engine.Start();
+            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Automation", "engine_started",
+                "Engine híbrida iniciada para o personagem detectado.", session.Pid.ToString());
         }
         else
         {
-            try { Bot.RefreshProfile(BotProfileService.Load()); }
+            try { Engine.RefreshProfile(BotProfileService.Load()); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
         }
-        Bot.Tick();
+        Engine.Tick();
     }
 
     private void UpdateLauncherHandoff(GameSession session)

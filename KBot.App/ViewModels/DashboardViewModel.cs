@@ -93,7 +93,7 @@ public sealed class DashboardViewModel : ObservableObject
     public string BotActionLog => _lifecycle.BotLog;
     public string BotSignalSummary => _lifecycle.BotSignals;
     public string BotPendingCommand => _lifecycle.BotPending;
-    public bool BrainActive => _lifecycle.Bot is not null;
+    public bool BrainActive => _lifecycle.Engine is not null || _lifecycle.Bot is not null;
 
     private void OnLifecycleChanged(KBotLifecycle _)
     {

@@ -1,3 +1,4 @@
+using KBot.App;
 using KBot.App.BotBrain;
 using KBot.App.Models;
 using KBot.App.Services;
@@ -422,6 +423,7 @@ RunRuntimeChecks();
 RunActionChecks();
 RunExecutorChecks();
 RunConfirmChecks();
+RunEngineIntegrationChecks();
 
 static void RunSocorroChecks()
 {
@@ -2594,6 +2596,61 @@ static void RunConfirmChecks()
 // Convenience: a snapshot at another absolute position (for move-confirm tests).
 static GameStateSnapshot withPos(GameStateSnapshot s, int x, int y) => s with { PosX = x, PosY = y };
 
+// FASE J — the whole closed loop end-to-end (sensors -> fusion -> delta -> arbitration ->
+// execution -> confirmation), driven deterministically by priming the engine's own store and
+// calling Tick() (exactly what KBotLifecycle does ~1/s). Real KBotEngine code path; fakes only
+// at the edges (pipe status, presence, frame source, key transport, and a one-shot module).
+static void RunEngineIntegrationChecks()
+{
+    int px = 100, py = 200, pz = 3;
+    var keys = new FakeKeys();
+    var cfg = new KBotEngineConfig
+    {
+        // Slow the sensor tiers so the test owns the samples via Store priming (the background
+        // Normal tier's first read fires once, consistently reflecting these same controlled values).
+        FastMs = 1_000_000, NormalMs = 1_000_000, SlowMs = 1_000_000,
+        ReadNative = async () => new NativeStatus
+        {
+            NativeOnline = true, ClientFound = true, HasPosition = true, PosX = px, PosY = py, PosZ = pz
+        },
+        Hwnd = () => (nint)1,
+        Presence = () => new PresenceProbe(InGame: true, Confidence: .9, CaptureAvailable: true, Source: "test"),
+        Profile = new BotProfile(),
+        // No frame source injected here: the visual creature feed reports Unavailable -> CreaturesRead=false.
+        // Proves "sensor off != empty world" survives to the fused snapshot inside the live engine.
+        Frames = () => new UnavailableFrameSource(),
+    };
+    using var engine = new KBotEngine(cfg, new IBotModule[] { new OneShotMoveModule() }, keys);
+    engine.Start();
+    Check(engine.Started && engine.Modules.Count == 1, "Engine(J): start + 1 modulo registrado");
+
+    // Prime the fused inputs with fresh samples (what the sensors would have published this tick).
+    var now = Environment.TickCount64;
+    void PrimePos() => engine.Store.Publish(StructuredPositionSensor.NameConst,
+        SensorValue<PositionValue>.Of(new PositionValue(px, py, pz, true), StructuredPositionSensor.NameConst));
+    engine.Store.Publish(VisionPresenceSensor.NameConst,
+        SensorValue<PresenceValue>.Of(new PresenceValue(true, .9, "test"), VisionPresenceSensor.NameConst));
+    PrimePos();
+
+    // --- tick 1: fuse -> module decides Move -> arbiter picks it -> executor fires the key ---
+    engine.Tick();
+    Check(engine.Runtime.PendingAction is { Kind: ActionKind.Move, Type: (int)IntentType.Move }, "Engine(J): move instalado em voo");
+    Check(engine.Runtime.PendingAction!.Baseline!.X == 100 && engine.Runtime.PendingAction.Baseline.Z == 3, "Engine(J): baseline capturou a posicao de partida");
+    Check(keys.Moves.Count == 1 && keys.Moves[0] == "down", "Engine(J): executor disparou o move no transporte real");
+    Check(engine.Signals.Contains("pos ok") && engine.Signals.Contains("cliente online") && engine.Signals.Contains("criaturas ?"),
+        "Engine(J): sinais honestos (pos ok / online / criaturas ? quando sem frame)");
+
+    // --- tick 2: position UNCHANGED -> confirmation reads NotYet, burns ONE retry, no re-fire while busy ---
+    engine.Tick();
+    Check(engine.Runtime.PendingAction is not null && engine.Runtime.PendingAction.RetriesLeft == 1, "Engine(J): posicao igual => NotYet consumiu 1 retry (sem sleep cego)");
+    Check(keys.Moves.Count == 1, "Engine(J): acao em voo => novo decide bloqueado (1 acao por vez)");
+
+    // --- tick 3: player actually WALKED -> world proves it -> Confirmed, slot released ---
+    py = 204; PrimePos();
+    engine.Tick();
+    Check(engine.Runtime.PendingAction is null, "Engine(J): posicao mudou => Confirm liberou o slot (loop fechado)");
+}
+
 Console.WriteLine("All checks passed.");
 
 sealed class DeadKeys : IKeySender
@@ -2639,5 +2696,21 @@ sealed class CountingSensor(int tier) : ISensor<PositionValue>
         Interlocked.Increment(ref _reads);
         if (FailNext) { FailNext = false; throw new InvalidOperationException("boom"); }
         return Task.FromResult(SensorValue<PositionValue>.Of(new PositionValue(1, 2, 3), Name));
+    }
+}
+
+// FASE J: a module that asks for exactly ONE move, then goes quiet - mirroring real modules that
+// emit an intent only when their condition holds. Lets the engine integration test watch the whole
+// fire->retry->confirm cycle without real game logic, and guarantees no re-fire after confirmation.
+sealed class OneShotMoveModule : IBotModule
+{
+    private bool _fired;
+    public string Name => "TesteMove";
+    public int Priority => 50;
+    public ActionIntent? Decide(GameState state, IProfileView profile)
+    {
+        if (_fired || !state.ClientConnected || !state.InGame || !state.HasPosition) return null;
+        _fired = true;
+        return ActionIntent.Move("down");
     }
 }

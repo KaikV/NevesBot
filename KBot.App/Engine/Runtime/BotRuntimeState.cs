@@ -47,10 +47,13 @@ namespace KBot.App.Engine.Runtime
 
         public void ClearTarget(long nowMs) => SetTarget(null, nowMs);
 
-        // Records that an action started and is now awaiting confirmation.
-        public void BeginAction(ActionKind kind, string? detail, int requiredRetriesLeft, long nowMs)
+        // Records that an action started and is now awaiting confirmation. The type (IntentType) tells the
+        // confirmer HOW to verify it; the baseline is the world snapshot taken at THIS instant so the check
+        // can be "did anything move/leave/appear" rather than a blind sleep timer.
+        public void BeginAction(ActionKind kind, string? detail, int requiredRetriesLeft, long nowMs,
+            int type = 0, ConfirmBaseline? baseline = null)
         {
-            PendingAction = new PendingAction(kind, detail ?? "", requiredRetriesLeft, nowMs);
+            PendingAction = new PendingAction(kind, detail ?? "", requiredRetriesLeft, nowMs, type) { Baseline = baseline };
             LastChangedAtMs = nowMs;
             UpdateStatusLine();
         }
@@ -61,7 +64,11 @@ namespace KBot.App.Engine.Runtime
             var p = PendingAction;
             if (p is null) return false;
             var left = p.RetriesLeft - 1;
-            PendingAction = left <= 0 ? null : new PendingAction(p.Kind, p.Detail, left, p.StartedAtMs) { LastAttemptAtMs = nowMs };
+            PendingAction = left <= 0 ? null : new PendingAction(p.Kind, p.Detail, left, p.StartedAtMs, p.Type)
+            {
+                LastAttemptAtMs = nowMs,
+                Baseline = p.Baseline,
+            };
             if (left > 0) LastChangedAtMs = nowMs;
             UpdateStatusLine();
             return left > 0;
@@ -94,7 +101,11 @@ namespace KBot.App.Engine.Runtime
             Phase = Phase,
             Target = Target,
             PendingAction = PendingAction is { } p
-                ? new PendingAction(p.Kind, p.Detail, p.RetriesLeft, p.StartedAtMs) { LastAttemptAtMs = p.LastAttemptAtMs }
+                ? new PendingAction(p.Kind, p.Detail, p.RetriesLeft, p.StartedAtMs, p.Type)
+                {
+                    LastAttemptAtMs = p.LastAttemptAtMs,
+                    Baseline = p.Baseline,
+                }
                 : null,
             StatusLine = StatusLine,
             LastChangedAtMs = LastChangedAtMs,
@@ -135,10 +146,22 @@ namespace KBot.App.Engine.Runtime
         public string Describe() => string.IsNullOrWhiteSpace(Name) ? $"#{Id} @ ({X},{Y},{Z})" : $"{Name} @ ({X},{Y},{Z})";
     }
 
+    // The world facts captured AT ACTION START, needed to confirm the action happened afterwards.
+    // Honesty: unreadable values stay null/-1 (unknown), they are never filled with 0/false, because
+    // "didn't read the scan" must not masquerade as "the screen was empty".
+    public sealed record ConfirmBaseline(int? X, int? Y, int? Z, int Wilds, bool? FieldPoke, double? Hp)
+    {
+        public static ConfirmBaseline Empty => new(null, null, null, -1, null, null);
+    }
+
     // The in-flight action awaiting confirmation. RetriesLeft is the honest counter: 0 means "give up".
-    public sealed record PendingAction(ActionKind Kind, string Detail, int RetriesLeft, long StartedAtMs)
+    // Type mirrors the IntentType that produced it so the confirmation strategy (FASE I) knows HOW to
+    // verify this particular action - a move is confirmed by position change, not by a catch-feed line.
+    public sealed record PendingAction(ActionKind Kind, string Detail, int RetriesLeft, long StartedAtMs,
+        int Type = 0)
     {
         public long LastAttemptAtMs { get; init; }
+        public ConfirmBaseline? Baseline { get; init; }
         public override string ToString() => Describe();
         public string Describe()
         {

@@ -421,6 +421,7 @@ RunDeltaChecks();
 RunRuntimeChecks();
 RunActionChecks();
 RunExecutorChecks();
+RunConfirmChecks();
 
 static void RunSocorroChecks()
 {
@@ -2510,6 +2511,88 @@ static void RunExecutorChecks()
         Check(r1.Accepted && r2.Accepted && r1.Outcome == r2.Outcome, "Exec: idempotente (mesmo input => mesmo outcome)");
     }
 }
+
+static void RunConfirmChecks()
+{
+    // A) Move confirmed by WORLD evidence: position actually changed from the at-start baseline.
+    {
+        const long T = 10_000;
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        var start = Snap(T);                                  // pos (100,200,3)
+        var res = am.Decide(start, rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T) }, T);
+        Check(res.HasWinner && rt.PendingAction is { Kind: ActionKind.Move, Type: (int)IntentType.Move }, "Confirm(Move): acao instalada com type+baseline");
+
+        var moved = withPos(Snap(T + 300), 102, 204);           // player walked -> real effect
+        Check(Confirmation.Check(rt.PendingAction!, moved, T + 300).State == ConfirmState.Confirmed, "Confirm(Move): posicao mudou => Confirm");
+    }
+
+    // B) Move NOT confirmed while position is unchanged - the honest retry case (key pressed, no walk).
+    {
+        const long T = 10_000;
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        var start = Snap(T);
+        am.Decide(start, rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T) }, T);
+
+        var same = Snap(T + 300);                               // still (100,200,3)
+        var d = Confirmation.Check(rt.PendingAction!, same, T + 300);
+        Check(d.State == ConfirmState.NotYet, "Confirm(Move): posicao igual => NotYet (retry, nao sleep)");
+
+        // Retries bounded: Fail twice then abort, slot freed, next tick can decide again.
+        Check(am.Fail(rt, T + 600), "Confirm(Move): 1o retry consumido");
+        Check(!am.Fail(rt, T + 900) && rt.PendingAction is null, "Confirm(Move): retries esgotaram => abort + slot livre");
+        var again = am.Decide(Snap(T + 950), rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T + 950) }, T + 950);
+        Check(again.HasWinner, "Confirm(Move): tick seguinte decide de novo apos abort");
+    }
+
+    // C) Creature events confirmed by creature-count change; scan-off tick is NOTYET (not success, not failure).
+    {
+        const long T = 10_000;
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        var start = Snap(T, wilds: 2);
+        am.Decide(start, rt, new[] { It("combat", IntentType.Catch, IntentPriority.Combat, T) }, T);
+        Check(rt.PendingAction!.Baseline!.Wilds == 2, "Confirm(Catch): baseline capturou contagem do campo");
+
+        var noScan = Snap(T + 300, creaturesRead: false);       // vision blink mid-catch
+        Check(Confirmation.Check(rt.PendingAction!, noScan, T + 300).State == ConfirmState.NotYet, "Confirm(Catch): sem scan neste tick => NotYet (ausencia != vazio)");
+
+        var caught = Snap(T + 700, wilds: 1);                    // one fewer -> the catch landed
+        Check(Confirmation.Check(rt.PendingAction!, caught, T + 700).State == ConfirmState.Confirmed, "Confirm(Catch): campo 2->1 => Confirm");
+    }
+
+    // D) Loot / Chat: fire-and-forget UNVERIFIABLE (released without claiming the item landed / message sent).
+    {
+        var pend = new PendingAction(ActionKind.Loot, "", 2, 0, (int)IntentType.Loot);
+        Check(Confirmation.Check(pend, Snap(1), 1).State == ConfirmState.Unverifiable, "Confirm(Loot): Unverifiable (sem feed de inventario)");
+        var chat = new PendingAction(ActionKind.Chat, "", 2, 0, (int)IntentType.Chat);
+        Check(Confirmation.Check(chat, Snap(1), 1).State == ConfirmState.Unverifiable, "Confirm(Chat): Unverifiable (fire-and-forget)");
+    }
+
+    // E) Loop helper semantics: NotYet->Fail(retry), Confirmed->Confirm(release), Unverifiable->Abort(release).
+    {
+        const long T = 10_000;
+        var am = new ActionManager(maxRetries: 2);
+        var rt = new BotRuntimeState();
+        var start = Snap(T);
+        am.Decide(start, rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T) }, T);
+
+        var notYet = Confirmation.Check(rt.PendingAction!, Snap(T + 100), T + 100);
+        if (notYet.State == ConfirmState.NotYet && !am.Fail(rt, T + 100)) am.Abort(rt, T + 100);
+        Check(rt.PendingAction is null || rt.PendingAction.RetriesLeft == 1, "Confirm(loop): NotYet consumiu 1 retry");
+        if (rt.PendingAction is not null) am.Abort(rt, T + 150);  // dar o resto do caminho p/ este loop
+
+        // Fresh action this time, verified path ends it cleanly.
+        am.Decide(Snap(T + 200), rt, new[] { It("route", IntentType.Move, IntentPriority.Movement, T + 200) }, T + 200);
+        var done = Confirmation.Check(rt.PendingAction!, withPos(Snap(T + 500), 150, 150), T + 500);
+        if (done.State == ConfirmState.Confirmed) am.Confirm(rt, T + 500);
+        Check(rt.PendingAction is null, "Confirm(loop): Confirmed liberou o slot");
+    }
+}
+
+// Convenience: a snapshot at another absolute position (for move-confirm tests).
+static GameStateSnapshot withPos(GameStateSnapshot s, int x, int y) => s with { PosX = x, PosY = y };
 
 Console.WriteLine("All checks passed.");
 

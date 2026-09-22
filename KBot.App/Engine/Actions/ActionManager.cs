@@ -73,9 +73,16 @@ namespace KBot.App.Engine.Actions
             if (winner is null)
                 return new ArbitrationResult(null, intents.Count == 0 ? BlockReason.NothingToDo : reason);
 
-            // Install the winning action so subsequent ticks treat it as in-flight.
+            // Install the winning action so subsequent ticks treat it as in-flight. The baseline is the
+            // world truth AT THIS INSTANT: confirmation (FASE I) compares a later snapshot against it to
+            // decide "did it actually happen" - no blind sleep timer.
             var kind = MapToActionKind(winner.Type);
-            runtime.BeginAction(kind, winner.Detail ?? winner.Payload, _maxRetries, nowMs);
+            var baseline = new ConfirmBaseline(
+                snapshot.PosX, snapshot.PosY, snapshot.PosZ,
+                snapshot.CreaturesRead ? snapshot.Wilds.Count : -1,
+                snapshot.CreaturesRead ? snapshot.FieldHasPoke : null,
+                snapshot.PlayerHpPercent);
+            runtime.BeginAction(kind, winner.Detail ?? winner.Payload, _maxRetries, nowMs, (int)winner.Type, baseline);
             if (winner.Type == IntentType.Move || winner.Type == IntentType.Attack)
                 runtime.Phase = BotPhase.Engaged;
 

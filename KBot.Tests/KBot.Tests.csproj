@@ -61,5 +61,7 @@
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorSampleStore.cs" Link="SensorSampleStore.cs" />
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorScheduler.cs" Link="SensorScheduler.cs" />
     <Compile Include="..\KBot.App\Engine\Runtime\BotRuntimeState.cs" Link="BotRuntimeState.cs" />
+    <Compile Include="..\KBot.App\Engine\Actions\IntentV2.cs" Link="IntentV2.cs" />
+    <Compile Include="..\KBot.App\Engine\Actions\ActionManager.cs" Link="ActionManager.cs" />
   </ItemGroup>
 </Project>

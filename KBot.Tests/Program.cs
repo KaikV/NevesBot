@@ -7,6 +7,7 @@ using KBot.App.Engine.Fusion;
 using KBot.App.Engine.State;
 using KBot.App.Engine.Events;
 using KBot.App.Engine.Runtime;
+using KBot.App.Engine.Actions;
 using System.Text.Json;
 
 static void Check(bool condition, string message)
@@ -418,6 +419,7 @@ RunSchedulerChecks();
 RunFusionChecks();
 RunDeltaChecks();
 RunRuntimeChecks();
+RunActionChecks();
 
 static void RunSocorroChecks()
 {
@@ -2275,6 +2277,143 @@ static void RunRuntimeChecks()
             "Runtime: Clone isola mutacoes (original intacto apos editar copia)");
         Check(snap.Target is null && snap.PendingAction is null && snap.CurrentOwner == "Kaik" && snap.Phase == BotPhase.Engaged,
             "Runtime: Clone replica dono/fase mas alvo/acao sao copias independentes");
+    }
+}
+
+static IntentV2 It(string src, IntentType type, IntentPriority prio, long atMs, IReadOnlyCollection<ActionLock>? locks = null) => new()
+{
+    SourceModule = src, Type = type, Priority = prio, CreatedAtMs = atMs,
+    RequiredLocks = locks ?? Array.Empty<ActionLock>(), Channel = ActionChannel.Hotkey, Payload = "X"
+};
+
+static void RunActionChecks()
+{
+    // A snapshot "version" at t=10_000; intents decide against it.
+    var snap = Snap(10_000);
+    const long T = 10_000;
+
+    // A) Priority tiering: Safety > Combat > Movement, one winner only.
+    {
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        var res = am.Decide(snap, rt, new[]
+        {
+            It("route", IntentType.Move, IntentPriority.Movement, T),
+            It("combat", IntentType.Attack, IntentPriority.Combat, T),
+            It("socorro", IntentType.Revive, IntentPriority.Safety, T),
+        }, T);
+        Check(res.HasWinner && res.Winner!.SourceModule == "socorro", "Action: Safety vence Combat > Movement (1 vencedor)");
+        Check(res.Reason == BlockReason.None && rt.PendingAction is { Kind: ActionKind.Revive }, "Action: vencedor instala acao no runtime");
+        am.Confirm(rt, T + 1);
+    }
+
+    // B) Tie inside a tier: oldest first (FIFO), stable by name on full tie.
+    {
+        var am = new ActionManager();
+        var res = am.Decide(snap, new BotRuntimeState(), new[]
+        {
+            It("b_module", IntentType.Attack, IntentPriority.Combat, T + 5),
+            It("a_module", IntentType.Attack, IntentPriority.Combat, T + 5),
+        }, T);
+        Check(res.HasWinner && res.Winner!.SourceModule == "a_module", "Action: empate de tier => nome estavel (a antes de b)");
+
+        var res2 = am.Decide(snap, new BotRuntimeState(), new[]
+        {
+            It("late", IntentType.Attack, IntentPriority.Combat, T + 9),
+            It("early", IntentType.Attack, IntentPriority.Combat, T + 1),
+        }, T);
+        Check(res2.HasWinner && res2.Winner!.SourceModule == "early", "Action: empate de tier => mais antigo vence (FIFO)");
+    }
+
+    // C) Single action slot: once a catch is in flight, Decide reports awaiting_confirmation
+    //    until it is confirmed/aborted - a second intent never silently starts.
+    {
+        var am = new ActionManager();
+        var rt = new BotRuntimeState();
+        am.Decide(snap, rt, new[] { It("combat", IntentType.Catch, IntentPriority.CatchLoot, T) }, T);
+        Check(rt.PendingAction is { Kind: ActionKind.Catch }, "Action: catch pendente instalado");
+
+        // While in flight, even a HIGHER-tier Safety intent waits - it cannot start a 2nd action.
+        var busy = am.Decide(snap, rt, new[] { It("socorro", IntentType.Revive, IntentPriority.Safety, T) }, T);
+        Check(!busy.HasWinner && busy.Reason == BlockReason.AwaitingConfirm, "Action: em andamento => awaiting_confirmation");
+
+        // Confirm releases the slot; the next tick can now start fresh.
+        am.Confirm(rt, T + 1);
+        var free = am.Decide(snap, rt, new[] { It("socorro", IntentType.Revive, IntentPriority.Safety, T + 1) }, T + 1);
+        Check(free.HasWinner && free.Winner!.SourceModule == "socorro", "Action: apos confirm o slot libera pro proximo vencedor");
+    }
+
+    // C2) Held locks are visible per action kind (source of truth the executor uses to know what's busy).
+    {
+        Check(ActionManager.HeldLocks(ActionKind.Catch).Contains(ActionLock.Mouse) &&
+              ActionManager.HeldLocks(ActionKind.Catch).Contains(ActionLock.Keyboard),
+            "Action: HeldLocks(Catch) => Mouse+Keyboard");
+        Check(!ActionManager.HeldLocks(ActionKind.Move).Contains(ActionLock.Mouse),
+            "Action: HeldLocks(Move) nao segura Mouse");
+    }
+
+    // D) Stale intent (decided on older world truth) loses to a fresher lower-tier intent.
+    {
+        var am = new ActionManager();
+        var staleTop = It("combat", IntentType.Revive, IntentPriority.Safety, T) with { RequiredGameStateVersion = 20_000 };
+        var freshLow = It("route", IntentType.Move, IntentPriority.Movement, T);   // RequiredGameStateVersion = 0 (compat)
+        var res = am.Decide(snap, new BotRuntimeState(), new[] { staleTop, freshLow }, T);
+        Check(res.HasWinner && res.Winner!.SourceModule == "route", "Action: intent stale perde para intent fresco de tier menor");
+
+        var allStale = am.Decide(snap, new BotRuntimeState(),
+            new[] { (It("a", IntentType.Attack, IntentPriority.Combat, T) with { RequiredGameStateVersion = 20_000 }) }, T);
+        Check(!allStale.HasWinner && allStale.Reason == BlockReason.Stale, "Action: todos stale => razao stale_state");
+    }
+
+    // E) Expired intent is dropped; honest 'expired' when nothing else remains.
+    {
+        var am = new ActionManager();
+        var expired = (It("old", IntentType.Move, IntentPriority.Movement, T)) with { ExpiresAtMs = T };  // now == expires+? use < now
+        // IsExpired uses now > ExpiresAtMs; set expiry strictly before now.
+        expired = (It("old", IntentType.Move, IntentPriority.Movement, T)) with { ExpiresAtMs = T - 1 };
+        var res = am.Decide(snap, new BotRuntimeState(), new[] { expired }, T);
+        Check(!res.HasWinner && res.Reason == BlockReason.Expired, "Action: intent expirada nao executa + razao expired");
+    }
+
+    // F) No intents at all => honest 'nothing_to_do' (never a fabricated action).
+    {
+        var res = new ActionManager().Decide(snap, new BotRuntimeState(), Array.Empty<IntentV2>(), T);
+        Check(!res.HasWinner && res.Reason == BlockReason.NothingToDo, "Action: sem intents => nothing_to_do");
+    }
+
+    // G) Confirmation lifecycle: retry counts down then aborts and releases.
+    {
+        var am = new ActionManager(maxRetries: 2);
+        var rt = new BotRuntimeState();
+        am.Decide(snap, rt, new[] { It("combat", IntentType.Attack, IntentPriority.Combat, T) }, T);
+        Check(rt.PendingAction is { RetriesLeft: 2 }, "Action: acao inicia com N retries");
+        Check(am.Fail(rt, T + 1), "Action: 1o fail => pode retriar (resta 1)");
+        Check(!am.Fail(rt, T + 2), "Action: retries esgotam => abortar");
+        Check(rt.PendingAction is null, "Action: abort liberou a acao (nada pendente)");
+        // After abort, a new tick can win again.
+        var again = am.Decide(snap, rt, new[] { It("combat", IntentType.Attack, IntentPriority.Combat, T + 3) }, T + 3);
+        Check(again.HasWinner, "Action: apos abort um novo tick pode vencer de novo");
+    }
+
+    // H) Legacy bridge maps channel/payload -> type + tier + locks, and ToLegacy round-trips.
+    {
+        var move = IntentBridge.FromLegacy(ActionIntent.Move("E"), "route", T);
+        Check(move.Type == IntentType.Move && move.Priority == IntentPriority.Movement &&
+              move.RequiredLocks.Contains(ActionLock.Movement), "Bridge: move => Movement tier + lock Movement");
+
+        var revive = IntentBridge.FromLegacy(ActionIntent.Hotkey("F9 revive"), "socorro", T);
+        Check(revive.Type == IntentType.Revive && revive.Priority == IntentPriority.Safety &&
+              revive.RequiredLocks.Contains(ActionLock.Combat), "Bridge: hotkey revive => Safety + lock Combat");
+
+        var catchHk = IntentBridge.FromLegacy(ActionIntent.Hotkey("F8"), "catch", T, IntentType.Catch);
+        Check(catchHk.Type == IntentType.Catch && catchHk.Priority == IntentPriority.CatchLoot &&
+              catchHk.RequiredLocks.Contains(ActionLock.Mouse), "Bridge: hint Catch => CatchLoot + lock Mouse");
+
+        var chat = IntentBridge.FromLegacy(ActionIntent.Command("chat", "oi"), "alerts", T);
+        Check(chat.Type == IntentType.Chat && chat.Priority == IntentPriority.Utility, "Bridge: cmd chat => Utility");
+
+        var back = revive.ToLegacy();
+        Check(back.Channel == ActionChannel.Hotkey, "Bridge: ToLegacy preserva canal p/ executor legado");
     }
 }
 

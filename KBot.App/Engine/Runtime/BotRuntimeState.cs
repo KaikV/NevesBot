@@ -48,9 +48,9 @@ namespace KBot.App.Engine.Runtime
         public void ClearTarget(long nowMs) => SetTarget(null, nowMs);
 
         // Records that an action started and is now awaiting confirmation.
-        public void BeginAction(ActionKind kind, string detail, int requiredRetriesLeft, long nowMs)
+        public void BeginAction(ActionKind kind, string? detail, int requiredRetriesLeft, long nowMs)
         {
-            PendingAction = new PendingAction(kind, detail, requiredRetriesLeft, nowMs);
+            PendingAction = new PendingAction(kind, detail ?? "", requiredRetriesLeft, nowMs);
             LastChangedAtMs = nowMs;
             UpdateStatusLine();
         }

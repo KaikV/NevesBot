@@ -426,6 +426,7 @@ RunConfirmChecks();
 RunEngineIntegrationChecks();
 RunWorldDeltaChecks();
 RunLootUnverifiableChecks();
+RunPositionFormatChecks();
 
 static void RunSocorroChecks()
 {
@@ -1731,6 +1732,63 @@ static void RunCalibrationChecks()
         Check(!fresh.EndgameEnabled, "Migração: Endgame continua desligado (precisa dos 6 nomes)");
         var again = BotProfileService.ApplyAutoDefaults(new BotProfile { AutoDefaultsVersion = 1, AttackerEnabled = false }, writeBack: false);
         Check(!again.AttackerEnabled && again.AutoDefaultsVersion == 1, "Migração: flag salva do usuário respeitada");
+    }
+}
+
+static void RunPositionFormatChecks()
+{
+    // A) int32 position: the triple lands at anchor 0/4/8; the report flags those words.
+    {
+        byte[] Bytes(int x, int y, int z)
+        {
+            var b = new byte[12];
+            Buffer.BlockCopy(BitConverter.GetBytes(x), 0, b, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(y), 0, b, 4, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(z), 0, b, 8, 4);
+            return b;
+        }
+        var words = PositionFormatProbe.Decode(Bytes(2962, 1180, 3));
+        Check(words.Count == 3, $"FormatProbe: 12 bytes -> 3 words ({words.Count})");
+        Check(words[0].Int32 == 2962 && words[1].Int32 == 1180 && words[2].Int32 == 3, "FormatProbe: int32 triple decoded in order");
+        Check(words[0].Offset == 0 && words[1].Offset == 4 && words[2].Offset == 8, "FormatProbe: anchor offsets 0/4/8");
+
+        var report = PositionFormatProbe.Report(words, 2962);
+        Check(report.Contains("INT32 confere"), "FormatProbe: int reference matches -> verdict int32");
+        Check(report.Contains("<--"), "FormatProbe: anchor words carry the marker");
+    }
+
+    // B) float32 position: the raw int does NOT equal the tile coord, so the verdict must NOT
+    //    claim int32 - it should point at the non-int columns instead.
+    {
+        var b = new byte[12];
+        Buffer.BlockCopy(BitConverter.GetBytes(2962.2f), 0, b, 0, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(1180.7f), 0, b, 4, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(1.0f), 0, b, 8, 4);
+        var words = PositionFormatProbe.Decode(b);
+        var recovered = float.Parse(words[0].Float32, System.Globalization.CultureInfo.InvariantCulture);
+        Check(Math.Abs(recovered - 2962.2f) < 0.05f, "FormatProbe: float32 column recovers the minimap-like value");
+        var report = PositionFormatProbe.Report(words, 2962.2);
+        Check(report.Contains("provavel FLOAT"), "FormatProbe: float layout -> verdict points at non-int");
+    }
+
+    // C) fixed-point: a big int that divides into a plausible coord (x10000). The decoder must
+    //    surface the scaled forms so the operator can read 2962.2283 off the raw 29622283.
+    {
+        var b = new byte[12];
+        Buffer.BlockCopy(BitConverter.GetBytes(29622283), 0, b, 0, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(11800000), 0, b, 4, 4);
+        Buffer.BlockCopy(BitConverter.GetBytes(10000), 0, b, 8, 4);
+        var words = PositionFormatProbe.Decode(b);
+        Check(words[0].FixedPoint.Contains("2962.228"), "FormatProbe: fixed-point column exposes the /10000 scaling");
+        var report = PositionFormatProbe.Report(words, 2962.2283);
+        Check(report.Contains("provavel FLOAT") || report.Contains("FIXED"), "FormatProbe: fixed layout -> non-int verdict");
+    }
+
+    // D) Degenerate inputs never throw and never fabricate words.
+    {
+        Check(PositionFormatProbe.Decode(null).Count == 0, "FormatProbe: null -> no words");
+        Check(PositionFormatProbe.Decode(new byte[] { 1, 2 }).Count == 0, "FormatProbe: short buffer -> no words");
+        Check(PositionFormatProbe.Report(new List<PositionFormatProbe.Word>()).Contains("nenhum dado valido"), "FormatProbe: empty report text");
     }
 }
 

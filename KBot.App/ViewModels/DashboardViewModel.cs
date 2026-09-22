@@ -27,6 +27,14 @@ public sealed class DashboardViewModel : ObservableObject
             _ = ok;
             Refresh();
         }, _ => HasSession && ReaderStatus != "Pronto");
+        DiagnosePositionCommand = new RelayCommand(async _ =>
+        {
+            double? reference = double.TryParse(MinimapReference, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+            ProbeReport = await _lifecycle.RunPositionFormatProbeAsync(reference);
+            OnPropertyChanged(nameof(ProbeReport));
+            OnPropertyChanged(nameof(HasProbeReport));
+        }, _ => HasSession);
         _lifecycle.Changed += OnLifecycleChanged;
         Refresh();
     }
@@ -40,6 +48,7 @@ public sealed class DashboardViewModel : ObservableObject
     public ICommand OpenSessionCommand { get; }
     public ICommand CaptureSessionCommand { get; }
     public ICommand CalibrateOffsetCommand { get; }
+    public ICommand DiagnosePositionCommand { get; }
     public string ClientName => _lifecycle.Installation?.Name ?? "Nenhum cliente configurado";
     public string ConfiguredClientPath => _lifecycle.Installation?.LauncherPath ?? string.Empty;
     public string SessionExecutable => Session is null ? "—" : Path.GetFileName(Session.ExecutablePath);
@@ -85,6 +94,22 @@ public sealed class DashboardViewModel : ObservableObject
     public string CalibrationStatus => _lifecycle.CalibrationStatus;
     public bool ShowCalibration => HasSession && !string.IsNullOrEmpty(CalibrationStatus);
 
+    // Format probe for a broken position read. The operator pastes the minimap value as an optional
+    // reference so the verdict can match it automatically; the report decodes every word three ways.
+    private string _minimapReference = "";
+    private string _probeReport = "";
+    public string MinimapReference
+    {
+        get => _minimapReference;
+        set { if (value != _minimapReference) { _minimapReference = value; OnPropertyChanged(); } }
+    }
+    public string ProbeReport
+    {
+        get => _probeReport;
+        private set { _probeReport = value; OnPropertyChanged(); }
+    }
+    public bool HasProbeReport => !string.IsNullOrEmpty(_probeReport);
+
     public bool HasPosition => ClientConnected && Status?.HasPosition == true;
     public string PositionText => HasPosition && Status is { } status
         ? $"{status.PosX}, {status.PosY}, {status.PosZ}" : "—";
@@ -122,6 +147,7 @@ public sealed class DashboardViewModel : ObservableObject
         ((RelayCommand)CaptureSessionCommand).RaiseCanExecuteChanged();
         ((RelayCommand)StartCoreCommand).RaiseCanExecuteChanged();
         ((RelayCommand)CalibrateOffsetCommand).RaiseCanExecuteChanged();
+        ((RelayCommand)DiagnosePositionCommand).RaiseCanExecuteChanged();
     }
 
     private void CaptureSession()

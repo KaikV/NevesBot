@@ -334,6 +334,53 @@ public sealed class KBotLifecycle : IDisposable
         catch (OperationCanceledException) { return false; }
     }
 
+    // FORMAT probe for when position reads are broken and auto-calibration finds no candidates.
+    // Dumps the confirmed anchor (base+0x37454E0 on DX) and decodes every 4-byte word three ways
+    // (int32 / float32 / fixed-point) so the real storage type can be read off the minimap value.
+    // Pure diagnosis - never mutates the active offset.
+    public async Task<string> RunPositionFormatProbeAsync(double? minimapReference = null,
+        CancellationToken cancellationToken = default)
+    {
+        var session = GameSession;
+        if (session is not { IsAlive: true })
+            return "Sem cliente conectado; abra o jogo para rodar o diagnostico.";
+        try
+        {
+            var start = await _native.StartMemoryDumpAsync(0, 256, cancellationToken);
+            using var doc = JsonDocument.Parse(start ?? "{}");
+            if (!doc.RootElement.GetProperty("ok").GetBoolean())
+            {
+                var detail = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "desconhecido";
+                return $"Diagnostico falhou ao abrir o dump: {detail}";
+            }
+
+            var bytes = new System.Collections.Generic.List<byte>();
+            for (var guard = 0; guard < 64 && bytes.Count < 256; guard++)
+            {
+                var chunkRaw = await _native.GetMemoryDumpChunkAsync(1024, cancellationToken);
+                if (chunkRaw is null) break;
+                using var chunk = JsonDocument.Parse(chunkRaw);
+                if (!chunk.RootElement.GetProperty("got").GetBoolean()) break;
+                var hex = chunk.RootElement.GetProperty("hex").GetString() ?? "";
+                for (var i = 0; i + 1 < hex.Length; i += 2)
+                    bytes.Add(Convert.ToByte(hex.Substring(i, 2), 16));
+                if (chunk.RootElement.GetProperty("remaining").GetInt32() == 0) break;
+            }
+            await _native.ResetMemoryDumpAsync(cancellationToken);
+
+            var words = PositionFormatProbe.Decode(bytes.ToArray(), startOffsetBytes: 0);
+            var report = PositionFormatProbe.Report(words, minimapReference);
+            Trace.WriteLine($"[PositionFormatProbe]\n{report}");
+            AutomationEventHub.Shared.Publish(AutomationEventSeverity.Info, "Diagnostico", "position_format_probe",
+                "Dump da posicao executado; formato decodificado como int32/float32/fixed.", session.Pid.ToString());
+            return report;
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or TimeoutException or UnauthorizedAccessException or JsonException or FormatException)
+        {
+            return $"Diagnostico falhou: {ex.Message}";
+        }
+    }
+
     private async Task<bool> StartCalibrationAsync(GameSession session, CancellationToken cancellationToken, bool force)
     {
         if (!force && (DateTime.Now - _lastCalibrationAttempt) < TimeSpan.FromMinutes(5)) return false;

@@ -38,6 +38,7 @@
     <Compile Include="..\KBot.App\BotBrain\ScreenScanSource.cs" Link="ScreenScanSource.cs" />
     <Compile Include="..\KBot.App\Services\OffsetAutoCalibrator.cs" Link="OffsetAutoCalibrator.cs" />
     <Compile Include="..\KBot.App\Services\PositionOffsetStore.cs" Link="PositionOffsetStore.cs" />
+    <Compile Include="..\KBot.App\Services\PositionFormatProbe.cs" Link="PositionFormatProbe.cs" />
     <Compile Include="..\KBot.App\Services\NativeService.cs" Link="NativeService.cs" />
     <Compile Include="..\KBot.App\BotBrain\BotBrain.cs" Link="BotBrain.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\HealingModule.cs" Link="HealingModule.cs" />

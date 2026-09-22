@@ -86,6 +86,45 @@
                                         Command="{Binding CalibrateOffsetCommand}" />
                             </Grid>
                         </Border>
+                        <Border Background="{DynamicResource WindowBackground}" CornerRadius="8" Padding="10" Margin="0,12,0,0">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasSession}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="DIAGNOSTICO DE FORMATO DE POSICAO" Foreground="{DynamicResource AccentBrush}"
+                                           FontSize="10" FontWeight="Bold" />
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="valor do minimap (opcional):" Foreground="{DynamicResource MutedText}"
+                                               FontSize="12" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Margin="8,0,8,0" VerticalAlignment="Center" Height="26"
+                                             Text="{Binding MinimapReference, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="Cole o numero que aparece no minimap (ex.: 2962.2283). O bot compara com a memoria." />
+                                    <Button Grid.Column="2" Content="Diagnosticar" VerticalAlignment="Center"
+                                            Command="{Binding DiagnosePositionCommand}" />
+                                </Grid>
+                                <TextBlock Text="{Binding ProbeReport}" Foreground="{DynamicResource PrimaryText}"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasProbeReport}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <Button Grid.Column="1" Content="Iniciar núcleo" Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding StartCoreCommand}" IsEnabled="{Binding CanStartCore}"

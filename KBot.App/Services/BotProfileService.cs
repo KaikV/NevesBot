@@ -13,10 +13,40 @@ public static class BotProfileService
     public static string ProfilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KBot", "profile.json");
 
+    // Modules that come ON for free (KryonBot-style "ligar e rodar"): safe to run
+    // unattended - they only spend items the player already has or stay idle when
+    // there is nothing to do. Endgame is NOT here: it needs real poke names first.
+    public static readonly string[] KryonDefaultFlags =
+    {
+        nameof(BotProfile.AttackerEnabled),
+        nameof(BotProfile.AutoReviveEnabled),
+        nameof(BotProfile.AlertsEnabled),
+        nameof(BotProfile.CatchEnabled),
+        nameof(BotProfile.LootEnabled),
+        nameof(BotProfile.FishingEnabled),
+        nameof(BotProfile.AntiAfkEnabled)
+    };
+
     public static BotProfile Load()
     {
-        if (!File.Exists(ProfilePath)) return Normalize(new BotProfile());
-        return Parse(File.ReadAllText(ProfilePath));
+        if (!File.Exists(ProfilePath)) return ApplyAutoDefaults(new BotProfile(), writeBack: false);
+        var profile = Parse(File.ReadAllText(ProfilePath));
+        return ApplyAutoDefaults(profile, writeBack: true);
+    }
+
+    // One-shot migration: profiles saved before the auto-flags existed carry no
+    // explicit choice, so we turn the safe modules on exactly once and stamp the
+    // version; later loads keep whatever the user saved.
+    public static BotProfile ApplyAutoDefaults(BotProfile profile, bool writeBack)
+    {
+        var normalized = Normalize(profile);
+        if (normalized.AutoDefaultsVersion >= 1) return normalized;
+        foreach (var flag in KryonDefaultFlags)
+            if (typeof(BotProfile).GetProperty(flag)?.GetValue(normalized) is false)
+                typeof(BotProfile).GetProperty(flag)!.SetValue(normalized, true);
+        normalized.AutoDefaultsVersion = 1;
+        if (writeBack) Save(normalized);
+        return normalized;
     }
 
     public static void Save(BotProfile profile)

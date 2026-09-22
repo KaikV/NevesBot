@@ -405,6 +405,7 @@ RunFishingChecks();
 RunAntiafkChecks();
 RunVigiaChecks();
 RunEndgameChecks();
+RunCalibrationChecks();
 
 static void RunSocorroChecks()
 {
@@ -1645,6 +1646,71 @@ static void RunEndgameChecks()
         Check(b is { Channel: ActionChannel.Command, Payload: "eghold:donopoke" }, $"EG H: hold tick is a sentinel command ({b?.Payload})");
         var mover = mod.Decide(sBase with { NowMs = 9000 }, onProf);
         Check(mover != null, "EG H: the tick the module owns is never null");
+    }
+}
+
+static void RunCalibrationChecks()
+{
+    // A) JsonOk: only {"ok":true} clears the gate.
+    {
+        Check(OffsetAutoCalibrator.JsonOk("{\"ok\":true,\"message\":\"snap\"}"), "Calib: ok:true accepted");
+        Check(!OffsetAutoCalibrator.JsonOk("{\"ok\":false,\"message\":\"no module\"}"), "Calib: ok:false rejected");
+        Check(!OffsetAutoCalibrator.JsonOk("{not json"), "Calib: broken JSON rejected");
+        Check(!OffsetAutoCalibrator.JsonOk(null), "Calib: null rejected");
+    }
+
+    // B) ParseCandidates: hex and decimal tokens; anything outside [0, 0x8000000] is junk.
+    {
+        var list = OffsetAutoCalibrator.ParseCandidates("{\"count\":4,\"candidates\":[\"0x1A2B4C\",\"42\",\"0x8000001\",\"-7\"]}");
+        Check(list.SequenceEqual(new long[] { 0x1A2B4C, 42 }), $"Calib: hex+decimal parsed, out-of-range dropped ({list})");
+        Check(OffsetAutoCalibrator.ParseCandidates(null).Count == 0, "Calib: null json -> empty");
+        Check(OffsetAutoCalibrator.ParseCandidates("{\"message\":\"x\"}").Count == 0, "Calib: no candidates key -> empty");
+        Check(OffsetAutoCalibrator.ParseCandidates("[1,2]").Count == 0, "Calib: non-object root -> empty");
+    }
+
+    // C) IsSaneTriple: tile coordinates pass, counters fail the magnitude guard.
+    {
+        Check(OffsetAutoCalibrator.IsSaneTriple(120, -34, 7), "Calib: tile triple is sane");
+        Check(!OffsetAutoCalibrator.IsSaneTriple(60000, 0, 5), "Calib: 60000 = counter, not a tile axis");
+        Check(!OffsetAutoCalibrator.IsSaneTriple(0, -50001, 3), "Calib: negative counter rejected");
+    }
+
+    // D) StableSurvivors: commit-order-preserving intersection; tickers die.
+    {
+        var commit = new List<long> { 0x10, 0x20, 0x30 };
+        Check(OffsetAutoCalibrator.StableSurvivors(commit, new HashSet<long> { 0x30, 0x20 }).SequenceEqual(new long[] { 0x20, 0x30 }),
+            "Calib: survivors keep commit order");
+        Check(OffsetAutoCalibrator.StableSurvivors(commit, new HashSet<long>()).Count == 0, "Calib: nothing stable -> nothing survives");
+    }
+
+    // E) PickCandidate: the first survivor wins, 0 when empty.
+    {
+        Check(OffsetAutoCalibrator.PickCandidate(new List<long> { 5, 9 }) == 5, "Calib: picks first");
+        Check(OffsetAutoCalibrator.PickCandidate(new List<long>()) == 0, "Calib: empty -> 0");
+    }
+
+    // F) IsVerifiedRead: needs READY AND a real position.
+    {
+        Check(OffsetAutoCalibrator.IsVerifiedRead(new NativeStatus { ReaderStatus = "READY", HasPosition = true, PosX = 1, PosY = 2, PosZ = 3 }),
+            "Calib: READY + position accepted");
+        Check(!OffsetAutoCalibrator.IsVerifiedRead(new NativeStatus { ReaderStatus = "NOT_CONFIGURED", HasPosition = false }),
+            "Calib: NOT_CONFIGURED rejected");
+        Check(!OffsetAutoCalibrator.IsVerifiedRead(new NativeStatus { ReaderStatus = "READY", HasPosition = false }),
+            "Calib: READY without position rejected");
+        Check(!OffsetAutoCalibrator.IsVerifiedRead(null), "Calib: null rejected");
+    }
+
+    // G) KryonBot-style auto defaults: a profile with no explicit choice gets the
+    //    safe modules ON once (Endgame stays OFF); a later load keeps the saved flags.
+    {
+        var fresh = BotProfileService.ApplyAutoDefaults(new BotProfile(), writeBack: false);
+        Check(fresh.AutoDefaultsVersion == 1, "Migração: versão stampada");
+        Check(fresh.AttackerEnabled && fresh.AutoReviveEnabled && fresh.AlertsEnabled &&
+              fresh.CatchEnabled && fresh.LootEnabled && fresh.FishingEnabled && fresh.AntiAfkEnabled,
+            "Migração: flags seguras ligadas");
+        Check(!fresh.EndgameEnabled, "Migração: Endgame continua desligado (precisa dos 6 nomes)");
+        var again = BotProfileService.ApplyAutoDefaults(new BotProfile { AutoDefaultsVersion = 1, AttackerEnabled = false }, writeBack: false);
+        Check(!again.AttackerEnabled && again.AutoDefaultsVersion == 1, "Migração: flag salva do usuário respeitada");
     }
 }
 

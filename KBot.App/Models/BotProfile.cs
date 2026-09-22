@@ -6,6 +6,10 @@ namespace KBot.App.Models;
 public sealed class BotProfile
 {
     public int SchemaVersion { get; set; } = 2;
+    // One-shot KryonBot-style auto defaults: profiles saved before version 1 had no
+    // explicit choice yet, so Load() turns the safe modules ON once and stamps 1.
+    // Endgame stays OFF (it needs the six poke names configured first).
+    public int AutoDefaultsVersion { get; set; }
     public List<string> MonstersToAttack { get; set; } = new();
     public bool AttackerEnabled { get; set; }
     public bool AutoReviveEnabled { get; set; }

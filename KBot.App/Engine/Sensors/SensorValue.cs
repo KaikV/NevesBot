@@ -43,7 +43,7 @@ namespace KBot.App.Engine.Sensors
         public TimeSpan Age(long nowMs) => TimeSpan.FromMilliseconds(nowMs - CapturedAt);
     }
 
-    public sealed record PositionValue(int X, int Y, int Z);
+    public sealed record PositionValue(int X, int Y, int Z, bool ClientOnline = true);
 
     public sealed record PresenceValue(bool InGame, double Confidence, string Source);
 

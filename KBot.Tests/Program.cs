@@ -4,6 +4,7 @@ using KBot.App.Services;
 using KBot.App.Engine.Sensors;
 using KBot.App.Engine.Scheduler;
 using KBot.App.Engine.Fusion;
+using KBot.App.Engine.State;
 using System.Text.Json;
 
 static void Check(bool condition, string message)
@@ -412,6 +413,7 @@ RunCalibrationChecks();
 RunSensorFoundationChecks();
 RunVisualCreatureChecks();
 RunSchedulerChecks();
+RunFusionChecks();
 
 static void RunSocorroChecks()
 {
@@ -1954,6 +1956,108 @@ static void RunSchedulerChecks()
         Check(errName == ok.Name && errEx is InvalidOperationException, "Scheduler: erro do sensor reportado no evento");
         Check(ok.Reads >= 2, "Scheduler: tier continua lendo depois da falha (não quebrou)");
         Check(other.Reads >= 1, "Scheduler: falha de um tier não afeta outro");
+    }
+}
+
+static void RunFusionChecks()
+{
+    const long Now = 100_000; // injected clock for deterministic freshness
+
+    static SensorValue<T> At<T>(T value, string src, long capturedAt) => new()
+    {
+        Value = value, CapturedAt = capturedAt, Source = src, Confidence = 1, IsValid = true, Health = SensorHealth.Healthy
+    };
+
+    // A) Full fresh read -> snapshot is complete, position + creatures Fresh, dual-read maps cleanly.
+    {
+        var store = new SensorSampleStore(new SensorRegistration[]
+        {
+            SensorRegistration.From(new CountingSensor(0)),
+            new SensorRegistration(StructuredPositionSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null)),
+            new SensorRegistration(VisualCreatureSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null)),
+            new SensorRegistration(VisionPresenceSensor.NameConst, SensorTier.Slow, _ => Task.FromResult<object?>(null))
+        });
+
+        store.Publish(StructuredPositionSensor.NameConst,
+            At(new PositionValue(4066, 3458, 5, ClientOnline: true), StructuredPositionSensor.NameConst, Now));
+        var scan = ScreenScan.Analyze(new[]
+        {
+            new ScannedCreature(ScannedCreature.SummonOwn, 100, 0, 0, 5),
+            new ScannedCreature(1, 100, 3, 0, 5),   // wild within DangerDistance of us
+            new ScannedCreature(ScannedCreature.SummonOther, 80, 9, 9, 5)
+        });
+        store.Publish(VisualCreatureSensor.NameConst,
+            At(new CreaturesValue(scan), VisualCreatureSensor.NameConst, Now));
+        store.Publish(VisionPresenceSensor.NameConst,
+            At(new PresenceValue(true, .95, "Combined"), VisionPresenceSensor.NameConst, Now));
+
+        var snap = new SensorFusion(nowMs: Now).Fuse(store);
+
+        Check(snap.ClientOnline && snap.InGame, "Fusion: conectividade + InGame propagados");
+        Check(snap.PositionFreshness == DataFreshness.Fresh && snap.PosX == 4066 && snap.PosZ == 5,
+            "Fusion: posição fresca com valores certos");
+        Check(snap.CreaturesRead && snap.CreaturesFreshness == DataFreshness.Fresh, "Fusion: criaturas lidas + frescas");
+        Check(snap.Wilds.Count == 1 && snap.FieldHasPoke == true && snap.Others.Count == 1,
+            "Fusion: wilds/meu poke/outros classificados via reuso");
+        Check(snap.WildsNearby == 1, "Fusion: perigoPerto calculado contra posição");
+        Check(snap.PlayerHpPercent is null, "Fusion: HP ainda Unknown (offsets pendentes) -> null, não 0");
+
+        // Dual-read to legacy keeps modules working unchanged.
+        var legacy = snap.ToLegacy();
+        Check(legacy.HasScreenScan && legacy.Wilds.Count == 1 && legacy.FieldHasPoke == true && legacy.X == 4066,
+            "Fusion: ToLegacy projeta para GameState existente (dual-read)");
+        Check(legacy.NowMs == Now, "Fusion: ToLegacy carrega o timestamp do snapshot");
+    }
+
+    // B) Stale position -> marked Stale, not silently trusted as fresh.
+    {
+        var store = new SensorSampleStore(new SensorRegistration[]
+        {
+            new SensorRegistration(StructuredPositionSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null))
+        });
+        store.Publish(StructuredPositionSensor.NameConst,
+            At(new PositionValue(100, 200, 0), StructuredPositionSensor.NameConst, Now - 400)); // within StaleMax(750), past FreshMax(250)
+        var snap = new SensorFusion(nowMs: Now).Fuse(store);
+        Check(snap.PositionFreshness == DataFreshness.Stale && snap.PosX == 100,
+            "Fusion: posição vencida = Stale (ainda usada, sinalizada)");
+    }
+
+    // C) No creature sample at all -> CreaturesRead=false (mundo NÃO vazio, só sem leitura).
+    {
+        var store = new SensorSampleStore(new SensorRegistration[]
+        {
+            new SensorRegistration(VisualCreatureSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null))
+        });
+        var snap = new SensorFusion(nowMs: Now).Fuse(store);
+        Check(!snap.CreaturesRead && snap.CreaturesFreshness == DataFreshness.Unknown,
+            "Fusion: sem sensor de criaturas = CreaturesRead false (não 'tela vazia')");
+        var legacy = snap.ToLegacy();
+        Check(!legacy.HasScreenScan && legacy.Wilds.Count == 0, "Fusion: legacy HasScreenScan=false quando sem leitura");
+    }
+
+    // D) A capture that returned Unavailable (HasRead=false) -> read=false, world unknown.
+    {
+        var store = new SensorSampleStore(new SensorRegistration[]
+        {
+            new SensorRegistration(VisualCreatureSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null))
+        });
+        var noRead = new SensorValue<CreaturesValue>
+        {
+            Value = new CreaturesValue(ScreenScan.Empty()),
+            CapturedAt = Now, Source = VisualCreatureSensor.NameConst, IsValid = false, Health = SensorHealth.Unavailable
+        };
+        store.Publish(VisualCreatureSensor.NameConst, noRead);
+        var snap = new SensorFusion(nowMs: Now).Fuse(store);
+        Check(!snap.CreaturesRead, "Fusion: captura Unavailable -> CreaturesRead=false mesmo com slot preenchido");
+    }
+
+    // E) Snapshot identity: each Fuse yields a unique SnapshotId; CapturedAt is the injected clock.
+    {
+        var empty = new SensorSampleStore(new SensorRegistration[] { new SensorRegistration(StructuredPositionSensor.NameConst, SensorTier.Normal, _ => Task.FromResult<object?>(null)) });
+        var s1 = new SensorFusion(nowMs: Now).Fuse(empty);
+        var s2 = new SensorFusion(nowMs: Now).Fuse(empty);
+        Check(s1.SnapshotId != s2.SnapshotId, "Fusion: SnapshotId único por tick");
+        Check(s1.CapturedAt == Now, "Fusion: CapturedAt usa o relógio injetado");
     }
 }
 

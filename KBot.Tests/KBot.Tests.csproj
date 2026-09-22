@@ -53,6 +53,8 @@
     <Compile Include="..\KBot.App\Engine\Sensors\VisualCreatureSensor.cs" Link="VisualCreatureSensor.cs" />
     <Compile Include="..\KBot.App\Engine\Sensors\VisionPresenceSensor.cs" Link="VisionPresenceSensor.cs" />
     <Compile Include="..\KBot.App\Engine\Fusion\FreshnessPolicy.cs" Link="FreshnessPolicy.cs" />
+    <Compile Include="..\KBot.App\Engine\Fusion\SensorFusion.cs" Link="SensorFusion.cs" />
+    <Compile Include="..\KBot.App\Engine\State\GameStateSnapshot.cs" Link="GameStateSnapshot.cs" />
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorSampleStore.cs" Link="SensorSampleStore.cs" />
     <Compile Include="..\KBot.App\Engine\Scheduler\SensorScheduler.cs" Link="SensorScheduler.cs" />
   </ItemGroup>

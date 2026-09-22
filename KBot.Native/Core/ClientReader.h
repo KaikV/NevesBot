@@ -51,11 +51,12 @@ public:
 			message = "Offset custom limpo; usando o padrao do build.";
 			return true;
 		}
-		// Sanity: the triple must sit inside the main module's first ~32MB to be
-		// a real position field, not an out-of-range garbage hit.
-		if (offsetFromBase > 0x2000000ULL)
+		// Sanity: the triple must sit inside the main module to be a real position
+		// field, not an out-of-range garbage hit. 128MB covers the DX build whose
+		// confirmed offset is 0x37454E0 (~58MB) plus recalibrated offsets near it.
+		if (offsetFromBase > 0x8000000ULL)
 		{
-			message = "Offset fora da faixa esperada (>32MB); provavel falso positivo.";
+			message = "Offset fora da faixa esperada (>128MB); provavel falso positivo.";
 			return false;
 		}
 		m_customOffset = static_cast<ULONG_PTR>(offsetFromBase);
@@ -76,6 +77,7 @@ public:
 		m_x = m_y = m_z = 0;
 		m_customOffset = 0;
 		ResetMemoryDump();
+		ResetDeltaScan();
 		SetMessage("Leitura aguardando o primeiro ciclo.");
 		std::cout << "[ClientReader] Initializing pid=" << pid << '\n';
 		std::cout << "[ClientReader] Read handle " << (readHandle != INVALID_HANDLE_VALUE ? "opened" : "unavailable") << '\n';
@@ -88,6 +90,7 @@ public:
 		m_baseAddress = 0;
 		m_valid = false;
 		m_x = m_y = m_z = 0;
+		ResetDeltaScan();
 		SetMessage("Nenhum PID vinculado ao ClientReader.");
 	}
 
@@ -316,6 +319,139 @@ public:
 		return true;
 	}
 
+	// Delta-scan: automatic position-offset calibration. The bot does NOT need to
+	// know its own coordinates - it only needs an address whose int32 triple moves
+	// by exactly one tile when the character steps one tile. Three phases over the
+	// same module memory:
+	//   SNAP   - cache the whole module as int32 (baseline, character standing still)
+	//   COMMIT - re-read after one step; any triple where EXACTLY one axis changed
+	//            by +/-1..2 and the other two stayed put (|values| < 50000 on both
+	//            sides) is a candidate position field
+	//   STABLE - re-read while standing still; a real position field is frozen now,
+	//            so candidates that kept moving are counters/tickers and get dropped
+	bool TryDeltaSnap(std::string& message) noexcept
+	{
+		m_deltaS0.clear();
+		m_deltaS1.clear();
+		if (m_pid == 0 || m_readHandle == INVALID_HANDLE_VALUE)
+		{
+			message = "Sem handle de leitura.";
+			return false;
+		}
+		ULONG_PTR base = 0;
+		SIZE_T size = 0;
+		if (!ResolveModule(base, size))
+		{
+			message = "Modulo principal nao encontrado.";
+			return false;
+		}
+		if (size < 64 || size > 0x8000000) // under 128MB: match the custom-offset sanity ceiling
+		{
+			char buf[96];
+			snprintf(buf, sizeof(buf), "Modulo com tamanho suspeito (0x%X bytes); delta-scan abortado.", size);
+			message = buf;
+			return false;
+		}
+		const SIZE_T chunk = SIZE_T(64) * 1024;
+		std::vector<char> buffer(chunk + 8);
+		for (SIZE_T start = 0; start < size; start += chunk)
+		{
+			const SIZE_T count = std::min(chunk + 8, size - start);
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(base + start), buffer.data(), count))
+				continue; // partial/unreadable page: skip, keep the rest
+			for (SIZE_T i = 0; i + 4 <= count; i += 4)
+			{
+				int value = 0;
+				memcpy(&value, buffer.data() + i, sizeof(value));
+				m_deltaS0.push_back(value);
+			}
+		}
+		m_deltaS1 = m_deltaS0; // STABLE compares against the post-step read
+		message = "Snapshot do modulo capturado para o delta-scan.";
+		return !m_deltaS0.empty();
+	}
+
+	bool TryDeltaCommit(std::vector<unsigned long long>& offsetsFromBase, std::string& message) noexcept
+	{
+		offsetsFromBase.clear();
+		m_deltaS1.clear();
+		if (m_pid == 0 || m_readHandle == INVALID_HANDLE_VALUE)
+		{
+			message = "Sem handle de leitura.";
+			return false;
+		}
+		if (m_deltaS0.empty())
+		{
+			message = "Sem snapshot anterior; rode SCAN_DELTA_SNAP primeiro.";
+			return false;
+		}
+		ULONG_PTR base = 0;
+		SIZE_T size = 0;
+		if (!ResolveModule(base, size))
+		{
+			message = "Modulo principal nao encontrado.";
+			return false;
+		}
+		const SIZE_T chunk = SIZE_T(64) * 1024;
+		std::vector<char> buffer(chunk + 8);
+		for (SIZE_T start = 0; start < size && offsetsFromBase.size() < 24; start += chunk)
+		{
+			const SIZE_T count = std::min(chunk + 8, size - start);
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(base + start), buffer.data(), count))
+				continue;
+			for (SIZE_T i = 0; i + 4 <= count; i += 4)
+			{
+				int value = 0;
+				memcpy(&value, buffer.data() + i, sizeof(value));
+				m_deltaS1.push_back(value);
+				const SIZE_T triple = i / 4; // aligned int32 index of this word
+				if (triple + 3 >= m_deltaS0.size() || triple + 3 >= m_deltaS1.size()) continue;
+				const int x0 = m_deltaS0[triple],     y0 = m_deltaS0[triple + 1], z0 = m_deltaS0[triple + 2];
+				const int x1 = m_deltaS1[triple],     y1 = m_deltaS1[triple + 1], z1 = m_deltaS1[triple + 2];
+				const int dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+				const int changed = (dx != 0 ? 1 : 0) + (dy != 0 ? 1 : 0) + (dz != 0 ? 1 : 0);
+				if (changed != 1) continue; // a tile step moves exactly one axis
+				const bool sane = (std::abs(x0) < 50000 && std::abs(y0) < 50000 && std::abs(z0) < 50000) &&
+				                  (std::abs(x1) < 50000 && std::abs(y1) < 50000 && std::abs(z1) < 50000);
+				if (!sane) continue;
+				offsetsFromBase.push_back(triple * 4ULL);
+			}
+		}
+		message = "Delta commit feito; candidatos onde um eixo mudou 1 tile.";
+		return true;
+	}
+
+	bool TryVerifyDeltaStable(std::string& message) noexcept
+	{
+		std::vector<unsigned long long> stable;
+		for (auto offset : m_deltaStableOffsets)
+		{
+			const SIZE_T triple = static_cast<SIZE_T>(offset / 4);
+			if (triple + 3 >= m_deltaS1.size()) continue;
+			int x = 0, y = 0, z = 0;
+			if (!ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + offset), &x, sizeof(x)) ||
+			    !ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + offset + 4), &y, sizeof(y)) ||
+			    !ReadMemory(reinterpret_cast<LPCVOID>(m_baseAddress + offset + 8), &z, sizeof(z)))
+				continue; // unreadable page now: drop, too risky
+			if (x == m_deltaS1[triple] && y == m_deltaS1[triple + 1] && z == m_deltaS1[triple + 2])
+				stable.push_back(offset); // frozen while standing still: real position field
+		}
+		m_deltaStableOffsets = std::move(stable);
+		message = "Filtragem de estabilidade aplicada; contadores descartados.";
+		return true;
+	}
+
+	void ResetDeltaScan() noexcept
+	{
+		m_deltaS0.clear();
+		m_deltaS1.clear();
+		m_deltaStableOffsets.clear();
+	}
+
+	const std::vector<unsigned long long>& DeltaStableOffsets() const noexcept { return m_deltaStableOffsets; }
+
+	void RememberDeltaCandidates(const std::vector<unsigned long long>& candidates) noexcept { m_deltaStableOffsets = candidates; }
+
 private:
 	unsigned int m_pid = 0;
 	HANDLE m_readHandle = INVALID_HANDLE_VALUE;
@@ -327,6 +463,9 @@ private:
 	std::string m_message;
 	unsigned long long m_dumpAddress = 0;
 	unsigned int m_dumpRemaining = 0;
+	std::vector<int> m_deltaS0;
+	std::vector<int> m_deltaS1;
+	std::vector<unsigned long long> m_deltaStableOffsets;
 
 	void SetMessage(std::string value) noexcept { m_message = std::move(value); }
 

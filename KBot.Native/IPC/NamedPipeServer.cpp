@@ -278,6 +278,56 @@ void NamedPipeServer::HandleClient()
 		   << "\",\"message\":\"" << EscapeJson(msg) << "\"}";
 		response = ss.str() + "\n";
 	}
+	else if (request == "SCAN_DELTA_SNAP")
+	{
+		m_reader.Poll();
+		std::string msg;
+		const bool ok = m_reader.TryDeltaSnap(msg);
+		std::ostringstream ss;
+		ss << "{\"ok\":" << (ok ? "true" : "false")
+		   << ",\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request == "SCAN_DELTA_COMMIT")
+	{
+		m_reader.Poll();
+		std::vector<unsigned long long> candidates;
+		std::string msg;
+		m_reader.TryDeltaCommit(candidates, msg);
+		candidates.resize(24); // keep within the 4KB pipe frame
+		m_reader.RememberDeltaCandidates(candidates); // verified by SCAN_DELTA_STABLE once the char stands still
+		std::ostringstream ss;
+		ss << "{\"count\":" << candidates.size()
+		   << ",\"candidates\":[";
+		for (size_t i = 0; i < candidates.size(); ++i)
+		{
+			if (i) ss << ",";
+			ss << "\"0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+			   << candidates[i] << std::dec << std::setfill(' ') << "\"";
+		}
+		ss << "],\"message\":\"" << EscapeJson(msg) << "\"}";
+		response = ss.str() + "\n";
+	}
+	else if (request == "SCAN_DELTA_STABLE")
+	{
+		// PING: re-read the remembered candidates after the character stood still;
+		// only frozen triples survive (real position, not counters).
+		m_reader.Poll();
+		std::string msg;
+		m_reader.TryVerifyDeltaStable(msg);
+		const auto& stable = m_reader.DeltaStableOffsets();
+		std::ostringstream ss;
+		ss << "{\"count\":" << stable.size()
+		   << ",\"candidates\":[";
+		for (size_t i = 0; i < stable.size(); ++i)
+		{
+			if (i) ss << ",";
+			ss << "\"0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+			   << stable[i] << std::dec << std::setfill(' ') << "\"";
+		}
+		ss << "]}";
+		response = ss.str() + "\n";
+	}
 	else if (request == "CLEAR_POSITION_OFFSET")
 	{
 		std::string msg;

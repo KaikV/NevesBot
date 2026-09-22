@@ -357,6 +357,11 @@ public sealed class KBotLifecycle : IDisposable
 
     private void TickBrain(GameSession session)
     {
+        // While the calibrator owns the character (snap -> 1-tile step -> stable),
+        // NO module may walk him or the delta baseline is corrupted. The bot keeps
+        // living; only its ticks are held until calibration ends.
+        if (_calibrator.IsRunning)
+            return;
         if (State != KBotLifecycleState.Ready)
         {
             Bot?.Dispose();

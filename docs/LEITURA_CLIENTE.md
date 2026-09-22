@@ -38,6 +38,20 @@ decisão pura que roda por cima da leitura.
 - **É aqui que quebra a cada update**: se o offset muda, a leitura volta `UNAVAILABLE` e o
   `GameStateProvider` degrada a posição para desconhecida. O *Caçador de Offsets*
   (`ScanForPositionAsync` / `Dump`) existe exatamente para re-descobrir o `0x37454E0`.
+- **Recalibração automática (delta-scan)**: quando o personagem está InGame e o reader
+  não está `READY`, o `KBotLifecycle` dispara o `OffsetAutoCalibrator` em background
+  (cooldown 5 min, botão "Recalibrar agora" no dashboard). Fluxo zero-input:
+  1. `SCAN_DELTA_SNAP` — core faz snapshot dos int32 do módulo (personagem parado);
+  2. passo de 1 tile pela pipe de teclas (`D`, fallback `RIGHT`/`UP`);
+  3. `SCAN_DELTA_COMMIT` — diff; só valem triplas X/Y/Z onde **exatamente um eixo** mudou
+     1 tile e `|v| < 50000` (mata contadores); teto 128 MB por candidato, cap 24;
+  4. `SCAN_DELTA_STABLE` — parado de novo; candidatos que continuaram mudando morrem;
+  5. cada sobrevivente é aplicado (`SET_POSITION_OFFSET`) e exige **duas leituras READY
+     idênticas** antes de ser salvo por executável em `PositionOffsetStore`.
+  Durante o processo o `TickBrain` fica suspenso (nenhum módulo pode andar o
+  personagem) e nada é persistido sem verificação dupla — falha = motivo explícito,
+  sem chute. A calibração manual (`CavebotViewModel`) continua como plano B.
+  ⚠ O core precisa ser recompilado no Windows para os comandos `SCAN_DELTA_*` existirem.
 
 ### Camada 3 — Varredura / scan (`ScreenScan.cs`)
 - Decisão **pura e headless** (nada de IO, nada de relógio): recebe uma lista de

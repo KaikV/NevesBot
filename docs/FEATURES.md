@@ -19,6 +19,14 @@ tela no menu lateral. A tela **Configurações** reúne todas as opções e impo
 As opções são salvas em `%LOCALAPPDATA%\KBot\profile.json`. Salvar uma preferência não inicia
 automação. O núcleo C++ detecta o processo `PokeAlliance.exe` e responde a `PING` e `GET_STATUS`.
 
+## Módulos ligados por padrão (migração one-shot)
+
+Perfis salvos antes da versão 1 de *auto-defaults* não carregam com escolha explícita: na
+primeira carga o KBot liga os módulos seguros e grava `AutoDefaultsVersion = 1`
+(`BotProfileService.ApplyAutoDefaults`) — Atacante, Revive automático, Alertas, Captura,
+Coleta, Pesca e Anti-AFK. **Endgame continua desligado** porque exige os seis nomes dos
+pokes do time configurados primeiro. O que o usuário salvar depois é sempre respeitado.
+
 ## Ciclo da sessão
 
 O dashboard segue `KBot → abre/conecta PokeAlliance → localiza PID → localiza HWND → cria

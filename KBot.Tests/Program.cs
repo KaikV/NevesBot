@@ -1,6 +1,8 @@
 using KBot.App.BotBrain;
 using KBot.App.Models;
 using KBot.App.Services;
+using KBot.App.Engine.Sensors;
+using KBot.App.Engine.Fusion;
 using System.Text.Json;
 
 static void Check(bool condition, string message)
@@ -406,6 +408,8 @@ RunAntiafkChecks();
 RunVigiaChecks();
 RunEndgameChecks();
 RunCalibrationChecks();
+RunSensorFoundationChecks();
+RunVisualCreatureChecks();
 
 static void RunSocorroChecks()
 {
@@ -1714,6 +1718,169 @@ static void RunCalibrationChecks()
     }
 }
 
+static void RunSensorFoundationChecks()
+{
+    // A) SensorValue factory + Age.
+    {
+        var v = SensorValue<PositionValue>.Of(new PositionValue(10, 20, 5), "test");
+        Check(v.IsValid && v.Health == SensorHealth.Healthy && v.Confidence == 1.0, "Sensor: Of() produces valid healthy value");
+        Check(v.Value!.X == 10 && v.Value.Y == 20 && v.Value.Z == 5, "Sensor: payload intact");
+
+        var u = SensorValue<PositionValue>.Unknown("src");
+        Check(!u.IsValid && u.Health == SensorHealth.Unavailable && u.Value is null, "Sensor: Unknown() is invalid/unavailable");
+
+        var now = Environment.TickCount64;
+        var aged = new SensorValue<int> { Value = 1, CapturedAt = now - 300, Source = "x", IsValid = true, Health = SensorHealth.Healthy };
+        Check(Math.Abs(aged.Age(now).TotalMilliseconds - 300) < 10, "Sensor: Age() computed from CapturedAt");
+    }
+
+    // B) FreshnessPolicy per-dado (HP expira antes que Inventory).
+    {
+        Check(DefaultPolicies.Hp.Evaluate(TimeSpan.FromMilliseconds(100)) == DataFreshness.Fresh, "Freshness: HP 100ms fresh");
+        Check(DefaultPolicies.Hp.Evaluate(TimeSpan.FromMilliseconds(300)) == DataFreshness.Stale, "Freshness: HP 300ms stale");
+        Check(DefaultPolicies.Hp.Evaluate(TimeSpan.FromMilliseconds(600)) == DataFreshness.Invalid, "Freshness: HP 600ms invalid");
+
+        Check(DefaultPolicies.Inventory.Evaluate(TimeSpan.FromMilliseconds(300)) == DataFreshness.Fresh, "Freshness: Inventory 300ms ainda fresh");
+        Check(DefaultPolicies.Inventory.Evaluate(TimeSpan.FromSeconds(5)) == DataFreshness.Stale, "Freshness: Inventory 5s stale");
+        Check(DefaultPolicies.Inventory.Evaluate(TimeSpan.FromSeconds(20)) == DataFreshness.Invalid, "Freshness: Inventory 20s invalid");
+
+        Check(DefaultPolicies.Position.Evaluate(TimeSpan.FromMilliseconds(200)) == DataFreshness.Fresh, "Freshness: position 200ms fresh");
+        Check(DefaultPolicies.Position.Evaluate(TimeSpan.FromMilliseconds(900)) == DataFreshness.Invalid, "Freshness: position 900ms invalid");
+    }
+
+    // C) StructuredPositionSensor — sucesso real.
+    {
+        var ok = new NativeStatus { NativeOnline = true, ClientFound = true, HasPosition = true, PosX = 11, PosY = 10, PosZ = 7 };
+        var sensor = new StructuredPositionSensor(() => Task.FromResult<NativeStatus?>(ok));
+        var result = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(result.IsValid && result.Health == SensorHealth.Healthy, "PosSensor: leitura validada = healthy");
+        Check(result.Value!.X == 11 && result.Value.Y == 10 && result.Value.Z == 7, "PosSensor: X/Y/Z corretos");
+        Check(result.Source == "StructuredPositionSensor", "PosSensor: source rotulado");
+    }
+
+    // D) StructuredPositionSensor — client conectado mas posição ilegível (DEGRADED, não inventa zero).
+    {
+        var noPos = new NativeStatus { NativeOnline = true, ClientFound = true, HasPosition = false };
+        var sensor = new StructuredPositionSensor(() => Task.FromResult<NativeStatus?>(noPos));
+        var result = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(!result.IsValid && result.Health == SensorHealth.Degraded, "PosSensor: sem posição = degraded (não inventa)");
+        Check(result.Value is null, "PosSensor: value nulo (unknown != zero)");
+    }
+
+    // E) StructuredPositionSensor — cliente ausente (UNAVAILABLE, vazio != "sem criaturas").
+    {
+        var sensor = new StructuredPositionSensor(() => Task.FromResult<NativeStatus?>(null));
+        var result = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(!result.IsValid && result.Health == SensorHealth.Unavailable, "PosSensor: status null = unavailable");
+    }
+
+    // F) StructuredPositionSensor — exceção de transporte vira estado, não crash.
+    {
+        var sensor = new StructuredPositionSensor(() => Task.FromException<NativeStatus?>(new IOException("pipe closed")));
+        var result = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(!result.IsValid && result.Health == SensorHealth.Unavailable && result.Error != null, "PosSensor: exceção -> Unavailable + erro registrado");
+    }
+
+    // G) Metadata de sensor (Name/Tier) para o scheduler futuro.
+    {
+        var sensor = new StructuredPositionSensor(() => Task.FromResult<NativeStatus?>(null));
+        Check(sensor.Name == "StructuredPositionSensor", "PosSensor: nome estável p/ logs");
+        Check(sensor.Tier == SensorTier.Normal, "PosSensor: tier Normal");
+    }
+}
+
+static void RunVisualCreatureChecks()
+{
+    static void SetPx(ref byte[] bgra, int stride, int x, int y, byte r, byte g, byte b)
+    {
+        var i = y * stride + x * 4;
+        bgra[i + 0] = b; bgra[i + 1] = g; bgra[i + 2] = r; bgra[i + 3] = 255; // BGRA
+    }
+    // Plant an occupied tile: a bright striped sprite band + a uniform HP band color.
+    static void Plant(byte[] bgra, int stride, int colW, int rowH, int col, int row, byte hr, byte hg, byte hb)
+    {
+        var c0 = col * colW;
+        var r0 = row * rowH;
+        for (var y = r0 + 1; y < r0 + (int)(rowH * .16); y++)                // HP band
+            for (var x = c0 + 4; x < c0 + colW - 4; x++) SetPx(ref bgra, stride, x, y, hr, hg, hb);
+        for (var y = r0 + (int)(rowH * .22); y < r0 + (int)(rowH * .70); y++) // sprite band (bright edges)
+            for (var x = c0 + 5; x < c0 + colW - 5; x++)
+                SetPx(ref bgra, stride, x, y, (byte)((x % 3 == 0) ? 245 : 95), (byte)((y % 3 == 0) ? 150 : 90), 80);
+    }
+
+    const int W = 400, H = 200;
+    int S = W * 4;
+
+    // A) Flat background -> NO creatures (not an error).
+    {
+        var bg = new byte[S * H];
+        for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) SetPx(ref bg, S, x, y, 60, 60, 60);
+        var empty = CreatureFrameAnalyzer.Extract(new CapturedFrame(W, H, S, bg));
+        Check(empty.Count == 0, "Creature: fundo plano -> zero criaturas");
+    }
+
+    // B) Our pokemon at center (blue HP) + one monster at (+1,0) (green HP).
+    var frameB = new byte[S * H];
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) SetPx(ref frameB, S, x, y, 60, 60, 60);
+    int colW = W / 10, rowH = H / 5;
+    Plant(frameB, S, colW, rowH, 5, 2, 40, 70, 210);   // player tile: blue HP => SummonOwn
+    Plant(frameB, S, colW, rowH, 6, 2, 40, 200, 40);   // +1,0: green HP => alive monster
+    var found = CreatureFrameAnalyzer.Extract(new CapturedFrame(W, H, S, frameB));
+    Check(found.Any(c => c.Type == ScannedCreature.SummonOwn && c.X == 0 && c.Y == 0),
+        "Creature: meu poke detectado no tile central (0,0)");
+    Check(found.Any(c => c.IsMonster && c.IsAlive && c.X == 1 && c.Y == 0),
+        "Creature: monstro vivo na pos relativa (+1,0)");
+
+    // C) Same but the monster tile has NO green HP => corpse kept with alive=false.
+    var frameC = new byte[S * H];
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) SetPx(ref frameC, S, x, y, 60, 60, 60);
+    Plant(frameC, S, colW, rowH, 4, 2, 30, 30, 30);     // dark HP => dead
+    var corpseFound = CreatureFrameAnalyzer.Extract(new CapturedFrame(W, H, S, frameC));
+    Check(corpseFound.Any(c => !c.IsAlive && c.IsMonster),
+        "Creature: tile sem HP verde = cadáver (alive=false), não sumido");
+
+    // D) ScreenScan.Analyze reclassifies: our pokemon excluded from wilds.
+    {
+        var own = new ScannedCreature(ScannedCreature.SummonOwn, 100, 0, 0, 0);
+        var wild = new ScannedCreature(1, 100, 1, 0, 0);
+        var scan = ScreenScan.Analyze(new[] { own, wild });
+        Check(scan.HasRead && scan.MyPoke != null && scan.Wilds.Count == 1 && scan.PokeOnField(),
+            "Analyze: meu poke separado de wilds (reuso do classifier existente)");
+    }
+
+    // E) VisualCreatureSensor: captura Ok -> válido com criaturas reais.
+    {
+        IFrameSource ok = new FixedFrameSource(new CapturedFrame(W, H, S, frameB));
+        var sensor = new VisualCreatureSensor(ok);
+        var res = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(res.IsValid && res.Health == SensorHealth.Healthy && res.Value!.Scan.HasRead,
+            "VSensor: captura ok -> válido + HasRead");
+        Check(res.Value!.Scan.Wilds.Count >= 1, "VSensor: criaturas reais chegaram ao SensorValue");
+        Check(res.Source == "VisualCreatureSensor" && res.Confidence > 0 && res.Confidence < 1,
+            "VSensor: source rotulado + confiança visual moderada");
+    }
+
+    // F) VisualCreatureSensor: captura indisponível -> Unavailable (NÃO lista vazia).
+    {
+        IFrameSource dead = new UnavailableFrameSource();
+        var sensor = new VisualCreatureSensor(dead);
+        var res = sensor.ReadAsync().GetAwaiter().GetResult();
+        Check(!res.IsValid && res.Health == SensorHealth.Unavailable, "VSensor: sem captura = Unavailable");
+        Check(res.Value!.Scan.HasRead == false, "VSensor: HasRead=false (sem leitura != mundo vazio)");
+    }
+
+    // G) VisionPresenceSensor: disponível + InGame -> válido; indisponível -> Degraded.
+    {
+        ISensor<PresenceValue> sOn = new VisionPresenceSensor(() => new PresenceProbe(true, .92, true, "Combined"));
+        var on = sOn.ReadAsync().GetAwaiter().GetResult();
+        Check(on.IsValid && on.Value!.InGame && on.Confidence > .9, "PSensor: InGame válido com confiança");
+
+        ISensor<PresenceValue> sDown = new VisionPresenceSensor(() => new PresenceProbe(false, 0, false, "ClientReader"));
+        var capDown = sDown.ReadAsync().GetAwaiter().GetResult();
+        Check(!capDown.IsValid && capDown.Health == SensorHealth.Degraded, "PSensor: sem captura = Degraded (não crash)");
+    }
+}
+
 Console.WriteLine("All checks passed.");
 
 sealed class FakeSink : IActionSink
@@ -1729,4 +1896,14 @@ sealed class FakeKeys : IKeySender
     public readonly List<string> Hotkeys = new();
     public bool TrySendMove(string direction) { Moves.Add(direction); return true; }
     public bool TrySendHotkey(string combo) { Hotkeys.Add(combo); return true; }
+}
+
+sealed class FixedFrameSource(CapturedFrame frame) : IFrameSource
+{
+    public CaptureResult Capture() => new(CaptureOutcome.Ok, frame);
+}
+
+sealed class UnavailableFrameSource : IFrameSource
+{
+    public CaptureResult Capture() => new(CaptureOutcome.Unavailable, null, "window closed");
 }

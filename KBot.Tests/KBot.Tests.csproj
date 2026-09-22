@@ -45,5 +45,13 @@
     <Compile Include="..\KBot.App\BotBrain\Modules\TargetingModule.cs" Link="TargetingModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\RouteModule.cs" Link="RouteModule.cs" />
     <Compile Include="..\KBot.App\BotBrain\Modules\FeatureModules.cs" Link="FeatureModules.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\SensorValue.cs" Link="SensorValue.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\ISensor.cs" Link="ISensor.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\StructuredPositionSensor.cs" Link="StructuredPositionSensor.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\FrameSource.cs" Link="FrameSource.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\CreatureFrameAnalyzer.cs" Link="CreatureFrameAnalyzer.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\VisualCreatureSensor.cs" Link="VisualCreatureSensor.cs" />
+    <Compile Include="..\KBot.App\Engine\Sensors\VisionPresenceSensor.cs" Link="VisionPresenceSensor.cs" />
+    <Compile Include="..\KBot.App\Engine\Fusion\FreshnessPolicy.cs" Link="FreshnessPolicy.cs" />
   </ItemGroup>
 </Project>

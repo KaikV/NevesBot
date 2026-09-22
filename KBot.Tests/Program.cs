@@ -6,6 +6,7 @@ using KBot.App.Engine.Scheduler;
 using KBot.App.Engine.Fusion;
 using KBot.App.Engine.State;
 using KBot.App.Engine.Events;
+using KBot.App.Engine.Runtime;
 using System.Text.Json;
 
 static void Check(bool condition, string message)
@@ -416,6 +417,7 @@ RunVisualCreatureChecks();
 RunSchedulerChecks();
 RunFusionChecks();
 RunDeltaChecks();
+RunRuntimeChecks();
 
 static void RunSocorroChecks()
 {
@@ -2187,6 +2189,92 @@ static void RunDeltaChecks()
         var bus = new EventBus();
         for (var i = 0; i < 500; i++) bus.Publish(new GameDelta(GameDeltaType.WildsCleared, i));
         Check(bus.Recent().Count <= 200, "EventBus: log bounded (<=200) sob volume alto");
+    }
+}
+
+static void RunRuntimeChecks()
+{
+    // A) Fresh runtime is idle, no target, no pending action, honest empty status.
+    {
+        var rt = new BotRuntimeState();
+        Check(rt.Phase == BotPhase.Idle && rt.Target is null && rt.PendingAction is null,
+            "Runtime: estado inicial idle / sem alvo / sem acao pendente");
+        Check(string.IsNullOrEmpty(rt.StatusLine), "Runtime: status line vazio ao iniciar");
+    }
+
+    // B) SetTarget reports change only once; same target = no change (no clock bump).
+    {
+        var rt = new BotRuntimeState();
+        var t = new TargetRef("c1", 12, 4, 3, "Mawile");
+        Check(rt.SetTarget(t, 1_000), "Runtime: setar alvo novo = changed");
+        rt.LastChangedAtMs = 5_000;
+        Check(!rt.SetTarget(new TargetRef("c1", 12, 4, 3, "Mawile"), 6_000),
+            "Runtime: mesmo alvo de novo = NAO changed");
+        Check(rt.LastChangedAtMs == 5_000, "Runtime: clock nao bumpa quando alvo nao muda");
+        Check(rt.Target!.Describe().Contains("Mawile") && rt.Target.Describe().Contains("(12,4,3)"),
+            "Runtime: alvo descreve nome + posicao absoluta");
+    }
+
+    // C) ClearTarget drops the target and stamps the clock.
+    {
+        var rt = new BotRuntimeState();
+        rt.SetTarget(new TargetRef("c1", 1, 2, 0), 1_000);
+        rt.ClearTarget(2_000);
+        Check(rt.Target is null && rt.LastChangedAtMs == 2_000, "Runtime: clearTarget limpa + marca horario");
+    }
+
+    // D) Action lifecycle: begin -> retry counts down -> exhausted -> finish clears.
+    {
+        var rt = new BotRuntimeState();
+        rt.BeginAction(ActionKind.Revive, "slot 2", requiredRetriesLeft: 2, nowMs: 1_000);
+        Check(rt.PendingAction is { RetriesLeft: 2 } && rt.Phase != BotPhase.Stuck, "Runtime: acao inicia com retries");
+        Check(rt.StatusLine.Contains("revivendo"), "Runtime: status reflete acao em andamento");
+
+        Check(rt.UseRetry(1_050), "Runtime: 1o retry OK (resta 1)");
+        Check(rt.PendingAction is { RetriesLeft: 1 }, "Runtime: retries decrementou para 1");
+
+        Check(!rt.UseRetry(1_100), "Runtime: 2o retry esgota (resta 0) => abortar");
+        Check(rt.PendingAction is null, "Runtime: retries esgotados derrubam acao (nada pendente)");
+
+        // Begin again and finish explicitly - also clears.
+        rt.BeginAction(ActionKind.Catch, "Mawile", 2, 2_000);
+        rt.FinishAction(2_100);
+        Check(rt.PendingAction is null, "Runtime: FinishAction limpa acao confirmada");
+    }
+
+    // E) UseRetry / FinishAction on an empty runtime are no-ops, not exceptions.
+    {
+        var rt = new BotRuntimeState();
+        bool threw = true;
+        try { rt.UseRetry(1); rt.FinishAction(2); threw = false; } catch { }
+        Check(!threw && rt.PendingAction is null, "Runtime: retry/finish sem acao = no-op seguro");
+    }
+
+    // F) Phase transitions are just fields; Stuck is distinguishable from Engaged.
+    {
+        var rt = new BotRuntimeState();
+        rt.Phase = BotPhase.Engaged;
+        rt.SetTarget(new TargetRef("x", 0, 0, 0), 1);
+        rt.Phase = BotPhase.Stuck;
+        Check(rt.Phase == BotPhase.Stuck && rt.Target is not null,
+            "Runtime: fase e alvo evoluem independentes (Stuck pode manter alvo)");
+    }
+
+    // G) Clone is a deep-enough copy: mutating the clone's pending action leaves the original intact.
+    {
+        var rt = new BotRuntimeState();
+        rt.CurrentOwner = "Kaik";
+        rt.Phase = BotPhase.Engaged;
+        rt.SetTarget(new TargetRef("c9", 5, 6, 1, "Wobbuffet"), 1_000);
+        rt.BeginAction(ActionKind.Attack, "c9", 2, 1_500);
+        var snap = rt.Clone();
+
+        snap.ClearTarget(2_000);
+        snap.FinishAction(2_100);
+        Check(rt.Target is not null && rt.PendingAction is not null,
+            "Runtime: Clone isola mutacoes (original intacto apos editar copia)");
+        Check(snap.Target is null && snap.PendingAction is null && snap.CurrentOwner == "Kaik" && snap.Phase == BotPhase.Engaged,
+            "Runtime: Clone replica dono/fase mas alvo/acao sao copias independentes");
     }
 }
 
